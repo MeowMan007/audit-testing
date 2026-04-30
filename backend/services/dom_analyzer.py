@@ -136,6 +136,7 @@ class DOMAnalyzer:
                     "text": text[:200],
                     "tag": f"h{level}",
                     "id": heading.get("id", ""),
+                    "data_al_id": heading.get("data-al-id", ""),
                 })
 
     def _extract_images(self, soup: BeautifulSoup, data: DOMData):
@@ -157,6 +158,7 @@ class DOMAnalyzer:
                 "is_decorative": img.get("role") == "presentation" or alt == "",
                 "width": img.get("width", ""),
                 "height": img.get("height", ""),
+                "data_al_id": img.get("data-al-id", ""),
             })
 
     def _extract_links(self, soup: BeautifulSoup, data: DOMData):
@@ -172,6 +174,7 @@ class DOMAnalyzer:
                 "target": link.get("target", ""),
                 "has_text": bool(text),
                 "is_empty": not text and not link.get("aria-label"),
+                "data_al_id": link.get("data-al-id", ""),
             })
 
     def _extract_forms(self, soup: BeautifulSoup, data: DOMData):
@@ -225,6 +228,7 @@ class DOMAnalyzer:
                 "has_aria_label": has_aria,
                 "placeholder": inp.get("placeholder", ""),
                 "required": inp.has_attr("required"),
+                "data_al_id": inp.get("data-al-id", ""),
             })
 
     def _extract_aria(self, soup: BeautifulSoup, data: DOMData):
@@ -314,6 +318,7 @@ class DOMAnalyzer:
                 "title": iframe.get("title", ""),
                 "has_title": bool(iframe.get("title")),
                 "aria_label": iframe.get("aria-label", ""),
+                "data_al_id": iframe.get("data-al-id", ""),
             })
 
     def _extract_buttons(self, soup: BeautifulSoup, data: DOMData):
@@ -331,6 +336,7 @@ class DOMAnalyzer:
                 "has_accessible_name": bool(
                     text or btn.get("value") or btn.get("aria-label") or btn.get("aria-labelledby")
                 ),
+                "data_al_id": btn.get("data-al-id", ""),
             })
 
     def _check_focus_styles(self, soup: BeautifulSoup, data: DOMData):

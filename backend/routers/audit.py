@@ -19,6 +19,10 @@ from backend.services.dom_analyzer import DOMAnalyzer
 from backend.services.rule_engine import RuleEngine
 from backend.services.dl_engine import DLEngine
 from backend.services.report_generator import ReportGenerator
+from backend.services.database import db_service
+from backend.services.pdf_generator import pdf_generator
+from backend.services.hf_api_service import hf_api_service
+from backend.utils.image_annotator import annotate_screenshot
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +44,7 @@ _audit_cache = {}
 # ============================================================
 # POST /api/audit — Main Audit Endpoint
 # ============================================================
-@router.post("/audit", response_model=AuditReport)
+@router.post("/audit")
 async def run_audit(request: AuditRequest):
     """Run a full accessibility audit on the given URL.
     
@@ -92,31 +96,47 @@ async def run_audit(request: AuditRequest):
 
         # Step 4: Run AI model (if requested and available)
         dl_insights = []
+        attention_heatmap = None
         ai_used = False
         if request.include_ai and page_data.screenshot_b64:
             logger.info("  Step 4/4: Running CNN analysis...")
-            dl_insights = await dl_engine.analyze(
+            dl_insights, attention_heatmap = await dl_engine.analyze_with_explanation(
                 screenshot_b64=page_data.screenshot_b64,
             )
             ai_used = dl_engine.is_available
 
         scan_duration = time.time() - start_time
 
+        # Annotate screenshot with bounding boxes
+        annotated_screenshot = annotate_screenshot(
+            page_data.screenshot_b64, 
+            issues, 
+            page_data.element_rects
+        )
+
         # Step 5: Generate report
         report = report_generator.generate(
             url=url,
             issues=issues,
             dl_insights=dl_insights,
-            screenshot_b64=page_data.screenshot_b64,
+            screenshot_b64=annotated_screenshot,
             scan_duration=scan_duration,
             ai_model_used=ai_used,
         )
+        report.attention_heatmap = attention_heatmap
 
         # Cache the result
         _audit_cache[url] = report
 
-        logger.info(f"Audit complete: score={report.overall_score}, time={scan_duration:.1f}s")
-        return report
+        # Save to database
+        audit_id = db_service.save_audit(report.dict())
+        
+        # Attach ID to response so frontend can request AI insights
+        report_dict = report.dict()
+        report_dict["id"] = audit_id
+        
+        logger.info(f"Audit complete: score={report.overall_score}, time={scan_duration:.1f}s, DB_ID={audit_id}")
+        return report_dict
 
     except HTTPException:
         raise
@@ -141,6 +161,104 @@ async def health_check():
         "version": "1.0.0",
         "project": "AccessLens — AI-Powered Accessibility Audit Tool",
     }
+
+
+# ============================================================
+# GET /api/history — Audit History
+# ============================================================
+@router.get("/history")
+async def get_history(limit: int = 50, offset: int = 0):
+    """Get recent audit history."""
+    return db_service.get_history(limit, offset)
+
+@router.get("/history/{audit_id}")
+async def get_audit_by_id(audit_id: int):
+    """Get full audit report by ID."""
+    report = db_service.get_audit_by_id(audit_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Audit not found")
+    return report
+
+@router.get("/statistics")
+async def get_statistics():
+    """Get aggregate statistics."""
+    return db_service.get_statistics()
+
+@router.get("/audit/pdf/{audit_id}")
+async def get_pdf(audit_id: int):
+    """Download audit report as PDF."""
+    from fastapi.responses import StreamingResponse
+    report = db_service.get_audit_by_id(audit_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Audit not found")
+        
+    pdf_buffer = pdf_generator.generate(report)
+    
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename=AccessLens_Report_{audit_id}.pdf"
+        }
+    )
+
+
+# ============================================================
+# POST /api/ai-insights — OpenRouter AI Analysis
+# ============================================================
+@router.post("/ai-insights")
+async def get_ai_insights(request: dict):
+    """Get AI-powered design and accessibility insights via OpenRouter.
+    
+    Body: { "audit_id": int } or { "url": str, "score": float, "grade": str, "issues": [...], "categories": [...] }
+    """
+    audit_id = request.get("audit_id")
+    
+    # If audit_id provided, load data from DB
+    if audit_id:
+        # Check for cached insights first
+        cached = db_service.get_ai_insights(audit_id)
+        if cached:
+            return cached
+        
+        report = db_service.get_audit_by_id(audit_id)
+        if not report:
+            raise HTTPException(status_code=404, detail="Audit not found")
+        
+        url = report.get("url", "")
+        score = report.get("overall_score", 0)
+        grade = report.get("grade", "F")
+        issues = report.get("issues", [])
+        categories = report.get("categories", [])
+    else:
+        url = request.get("url", "")
+        score = request.get("score", 0)
+        grade = request.get("grade", "F")
+        issues = request.get("issues", [])
+        categories = request.get("categories", [])
+
+    if not hf_api_service.is_available:
+        return {"available": False, "reason": "HF_TOKEN not configured in .env"}
+
+    insights = await hf_api_service.get_insights(
+        url=url, score=score, grade=grade,
+        issues=issues, categories=categories,
+    )
+    
+    # Store insights if audit_id was provided
+    if audit_id and insights.get("available"):
+        db_service.save_ai_insights(audit_id, insights)
+    
+    return insights
+
+
+@router.get("/ai-insights/{audit_id}")
+async def get_cached_ai_insights(audit_id: int):
+    """Get cached AI insights for a specific audit."""
+    insights = db_service.get_ai_insights(audit_id)
+    if not insights:
+        return {"available": False, "reason": "No AI insights found for this audit"}
+    return insights
 
 
 # ============================================================

@@ -1,0 +1,66 @@
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyTorch/ML models
+*.pth
+*.pt
+*.onnx
+dataset/
+!dataset/.keep
+models/
+!models/.keep
+
+# C Extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# VS Code / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# MacOS
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# AccessLens specific
+# Ignore the accesslens.zip file used for Colab uploads
+*.zip
+# Ignore generated PDF reports
+*.pdf
+coverage/
+.pytest_cache/

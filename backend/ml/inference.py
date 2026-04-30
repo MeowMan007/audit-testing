@@ -1,5 +1,10 @@
 """
-Inference Module — Run predictions using the trained AccessibilityNet model.
+Inference Module — Run predictions using AccessibilityViT (ViT-B/16).
+Also supports EfficientNetV2-M as fallback.
+
+Loads model variant from checkpoint's 'variant' field:
+  - 'vit_b16'          → AccessibilityViT
+  - 'efficientnet_v2'  → AccessibilityNetV2
 
 Takes a web page screenshot (as base64 string, file path, PIL Image, or bytes)
 and returns detected accessibility violations with:
@@ -16,13 +21,13 @@ import base64
 import io
 import logging
 from pathlib import Path
-from typing import Optional, List, Dict, Union
+from typing import Optional, List, Dict, Union, Tuple
 
 import torch
 from torchvision import transforms
 from PIL import Image
 
-from backend.ml.model import AccessibilityNet, VIOLATION_CLASSES, NUM_CLASSES
+from backend.ml.model import AccessibilityViT, get_model, VIOLATION_CLASSES, NUM_CLASSES
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +101,7 @@ class AccessibilityInference:
         self.model_path = Path(model_path)
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.confidence_threshold = confidence_threshold
-        self.model: Optional[AccessibilityNet] = None
+        self.model: Optional[nn.Module] = None
         self.loaded = False
 
         # Image preprocessing (must match training transforms)
@@ -123,18 +128,20 @@ class AccessibilityInference:
 
         try:
             checkpoint = torch.load(self.model_path, map_location=self.device, weights_only=False)
-            
             num_classes = checkpoint.get("num_classes", NUM_CLASSES)
-            self.model = AccessibilityNet(num_classes=num_classes, pretrained=False)
+            variant = checkpoint.get("variant", "vit_b16")
+
+            from backend.ml.model import get_model
+            self.model = get_model(variant=variant, pretrained=False, freeze_backbone=False)
             self.model.load_state_dict(checkpoint["model_state_dict"])
             self.model.to(self.device)
             self.model.eval()
             self.loaded = True
 
             logger.info(
-                f"Model loaded from {self.model_path} "
-                f"(epoch {checkpoint.get('epoch', '?')}, "
-                f"val_f1: {checkpoint.get('val_f1', '?'):.4f})"
+                f"Model loaded: {variant} from {self.model_path.name} "
+                f"(epoch {checkpoint.get('epoch','?')}, "
+                f"val_f1={checkpoint.get('val_f1',0):.4f})"
             )
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
@@ -197,6 +204,60 @@ class AccessibilityInference:
 
         logger.info(f"CNN detected {len(detections)} violations")
         return detections
+
+    def predict_with_explanation(self, screenshot_b64: str) -> Tuple[List[Dict], Optional[str]]:
+        """Predict and generate a Grad-CAM heatmap for the most confident violation."""
+        if not self.loaded or self.model is None:
+            return [], None
+            
+        try:
+            image_tensor = self._to_pil(screenshot_b64)
+            if image_tensor is None:
+                return [], None
+                
+            tensor = self.transform(image_tensor).unsqueeze(0).to(self.device)
+            tensor.requires_grad_()
+            
+            probs = self.model.get_probabilities(tensor)[0]
+            
+            detections = []
+            max_prob = -1.0
+            max_class_idx = -1
+            
+            for i, prob in enumerate(probs):
+                p = float(prob)
+                if p >= self.confidence_threshold:
+                    class_name = VIOLATION_CLASSES[i]
+                    meta = VIOLATION_METADATA.get(class_name, {})
+                    detections.append({
+                        "category": class_name,
+                        "confidence": p,
+                        "severity": meta.get("severity", "warning"),
+                        "title": meta.get("title", class_name),
+                        "description": meta.get("description", ""),
+                        "wcag_criterion": meta.get("wcag", ""),
+                        "suggestion": meta.get("suggestion", "")
+                    })
+                    if p > max_prob:
+                        max_prob = p
+                        max_class_idx = i
+                        
+            heatmap_b64 = None
+            if max_class_idx >= 0:
+                from backend.ml.explainability import generate_attention_heatmap
+                heatmap_b64 = generate_attention_heatmap(
+                    image_tensor=tensor,
+                    model=self.model,
+                    class_idx=max_class_idx,
+                    original_image_b64=screenshot_b64
+                )
+                
+            detections.sort(key=lambda x: x["confidence"], reverse=True)
+            return detections, heatmap_b64
+            
+        except Exception as e:
+            logger.error(f"Inference+XAI failed: {e}")
+            return [], None
 
     def get_all_probabilities(
         self,

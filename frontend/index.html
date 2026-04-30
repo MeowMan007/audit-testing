@@ -3,31 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="AccessLens — AI-powered web accessibility auditing tool using WCAG 2.1 rule-based checks and a custom EfficientNet CNN model for comprehensive accessibility analysis.">
+    <meta name="description" content="AccessLens — AI-powered web accessibility auditing tool using WCAG 2.1 rule-based checks and a custom ViT-B/16 Vision Transformer model for comprehensive accessibility analysis.">
+    
+    <!-- Open Graph / Social Meta Tags -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="AccessLens — AI Accessibility Audit Tool">
+    <meta property="og:description" content="Analyze any website for accessibility compliance using WCAG checks and AI analysis.">
+    <meta name="twitter:card" content="summary_large_image">
+
     <title>AccessLens — AI Accessibility Audit Tool</title>
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-    <!-- Animated Background Orbs -->
-    <div class="bg-orbs" aria-hidden="true">
-        <div class="orb orb-1"></div>
-        <div class="orb orb-2"></div>
-        <div class="orb orb-3"></div>
-    </div>
-
     <!-- Header -->
     <header class="header" id="header">
         <div class="header-inner">
-            <div class="logo" id="logo">
+            <a href="#" class="logo" id="logo">
                 <span class="logo-icon">◎</span>
                 <span class="logo-text">AccessLens</span>
-            </div>
+            </a>
             <nav class="nav" aria-label="Main navigation">
-                <a href="#hero" class="nav-link">Home</a>
-                <a href="#about-section" class="nav-link">About WCAG</a>
+                <a href="#hero" class="nav-link">Audit</a>
+                <a href="#about-section" class="nav-link">WCAG Rules</a>
+                <a href="#history-section" class="nav-link" id="nav-history">History</a>
                 <a href="#limitations-section" class="nav-link">Limitations</a>
             </nav>
         </div>
@@ -35,65 +37,62 @@
 
     <!-- Hero Section -->
     <section class="hero" id="hero">
-        <div class="hero-content">
-            <div class="hero-badge" id="hero-badge">AI-Powered • WCAG 2.1 • Deep Learning</div>
-            <h1 class="hero-title" id="hero-title">
-                Web Accessibility<br>
-                <span class="gradient-text">Audit Tool</span>
-            </h1>
-            <p class="hero-subtitle" id="hero-subtitle">
-                Analyze any website for accessibility compliance using <strong>rule-based WCAG checks</strong>
-                and a <strong>custom-trained EfficientNet CNN model</strong>. Get an instant score, 
-                categorized issues, and AI-powered fix suggestions.
-            </p>
+        <div class="hero-badge" id="hero-badge">AI-Powered • WCAG 2.1 • Vision Transformer</div>
+        <h1 class="hero-title" id="hero-title">
+            Web Accessibility <br>
+            <span class="accent-text">Audit Tool</span>
+        </h1>
+        <p class="hero-subtitle" id="hero-subtitle">
+            Analyze any website for accessibility compliance using rule-based WCAG checks
+            and a custom-trained ViT-B/16 AI model. Get an instant score and actionable design fixes.
+        </p>
 
-            <!-- URL Input Form -->
-            <form class="audit-form" id="audit-form" role="search" aria-label="Website accessibility audit">
-                <div class="input-wrapper">
-                    <label for="url-input" class="sr-only">Website URL to audit</label>
-                    <input
-                        type="url"
-                        id="url-input"
-                        class="url-input"
-                        placeholder="Enter website URL (e.g., https://example.com)"
-                        required
-                        autocomplete="url"
-                        aria-describedby="url-help"
-                    >
-                    <button type="submit" class="audit-btn" id="audit-btn">
-                        <span class="btn-text">Audit Now</span>
-                        <span class="btn-loader" aria-hidden="true"></span>
-                    </button>
-                </div>
-                <p id="url-help" class="input-help">Enter a full URL including https://</p>
-            </form>
+        <!-- URL Input Form -->
+        <form class="audit-form" id="audit-form" role="search" aria-label="Website accessibility audit">
+            <div class="input-wrapper">
+                <label for="url-input" class="sr-only">Website URL to audit</label>
+                <input
+                    type="url"
+                    id="url-input"
+                    class="url-input"
+                    placeholder="Enter website URL (e.g., https://example.com)"
+                    required
+                    autocomplete="url"
+                    aria-describedby="url-help"
+                >
+                <button type="submit" class="audit-btn" id="audit-btn">
+                    <span class="btn-text">Run Audit</span>
+                    <span class="btn-loader" aria-hidden="true"></span>
+                </button>
+            </div>
+            <p id="url-help" class="input-help">Enter a full URL including https://</p>
+        </form>
 
-            <!-- Demo Buttons (Requirement 9) -->
-            <div class="demo-section" id="demo-section">
-                <p class="demo-label">Or try a demo:</p>
-                <div class="demo-buttons">
-                    <button class="demo-btn demo-good" data-demo="good-site" id="demo-good">
-                        <span class="demo-icon">✓</span>
-                        <span class="demo-info">
-                            <span class="demo-name">Well-Built Site</span>
-                            <span class="demo-score">Score: ~87</span>
-                        </span>
-                    </button>
-                    <button class="demo-btn demo-medium" data-demo="medium-site" id="demo-medium">
-                        <span class="demo-icon">◐</span>
-                        <span class="demo-info">
-                            <span class="demo-name">Modern Startup</span>
-                            <span class="demo-score">Score: ~62</span>
-                        </span>
-                    </button>
-                    <button class="demo-btn demo-bad" data-demo="bad-site" id="demo-bad">
-                        <span class="demo-icon">✗</span>
-                        <span class="demo-info">
-                            <span class="demo-name">Outdated Site</span>
-                            <span class="demo-score">Score: ~34</span>
-                        </span>
-                    </button>
-                </div>
+        <!-- Demo Buttons -->
+        <div class="demo-section" id="demo-section">
+            <p class="demo-label">Or try a demo:</p>
+            <div class="demo-buttons">
+                <button class="demo-btn demo-good" data-demo="good-site" id="demo-good">
+                    <span class="demo-icon">✓</span>
+                    <span class="demo-info">
+                        <span class="demo-name">Well-Built Site</span>
+                        <span class="demo-score">Score: ~87</span>
+                    </span>
+                </button>
+                <button class="demo-btn demo-medium" data-demo="medium-site" id="demo-medium">
+                    <span class="demo-icon">◐</span>
+                    <span class="demo-info">
+                        <span class="demo-name">Modern Startup</span>
+                        <span class="demo-score">Score: ~62</span>
+                    </span>
+                </button>
+                <button class="demo-btn demo-bad" data-demo="bad-site" id="demo-bad">
+                    <span class="demo-icon">✗</span>
+                    <span class="demo-info">
+                        <span class="demo-name">Outdated Site</span>
+                        <span class="demo-score">Score: ~34</span>
+                    </span>
+                </button>
             </div>
         </div>
     </section>
@@ -101,34 +100,34 @@
     <!-- Progress Section (shown during audit) -->
     <section class="progress-section hidden" id="progress-section" aria-live="polite">
         <div class="progress-container">
-            <h2 class="progress-title">Analyzing Accessibility...</h2>
+            <h2 class="progress-title">Running Audit Pipeline...</h2>
             <div class="progress-steps">
                 <div class="progress-step" id="step-fetch">
                     <div class="step-indicator"><span class="step-num">1</span></div>
                     <div class="step-info">
-                        <span class="step-name">Fetching Page</span>
-                        <span class="step-desc">Rendering with Selenium</span>
+                        <span class="step-name">Fetching & Rendering</span>
+                        <span class="step-desc">Loading page via headless browser</span>
                     </div>
                 </div>
                 <div class="progress-step" id="step-parse">
                     <div class="step-indicator"><span class="step-num">2</span></div>
                     <div class="step-info">
-                        <span class="step-name">Parsing DOM</span>
-                        <span class="step-desc">BeautifulSoup analysis</span>
+                        <span class="step-name">DOM Analysis</span>
+                        <span class="step-desc">Extracting accessibility tree & styles</span>
                     </div>
                 </div>
                 <div class="progress-step" id="step-rules">
                     <div class="step-indicator"><span class="step-num">3</span></div>
                     <div class="step-info">
-                        <span class="step-name">WCAG Rule Checks</span>
-                        <span class="step-desc">15+ accessibility rules</span>
+                        <span class="step-name">WCAG Rules Engine</span>
+                        <span class="step-desc">Checking structural compliance</span>
                     </div>
                 </div>
                 <div class="progress-step" id="step-ai">
                     <div class="step-indicator"><span class="step-num">4</span></div>
                     <div class="step-info">
-                        <span class="step-name">AI Model Analysis</span>
-                        <span class="step-desc">EfficientNet CNN inference</span>
+                        <span class="step-name">CNN Model Inference</span>
+                        <span class="step-desc">ViT-B/16 visual accessibility analysis</span>
                     </div>
                 </div>
             </div>
@@ -183,63 +182,104 @@
                 <!-- Populated by JS -->
             </div>
 
-            <!-- Issue Explorer -->
-            <div class="issues-panel" id="issues-panel">
-                <div class="issues-header">
-                    <h2 class="issues-title">Issues Found</h2>
-                    <div class="issues-controls">
-                        <div class="filter-tabs" id="filter-tabs" role="tablist" aria-label="Filter issues by severity">
-                            <button class="filter-tab active" data-filter="all" role="tab" aria-selected="true" id="tab-all">All</button>
-                            <button class="filter-tab" data-filter="critical" role="tab" aria-selected="false" id="tab-critical">Critical</button>
-                            <button class="filter-tab" data-filter="warning" role="tab" aria-selected="false" id="tab-warning">Warning</button>
-                        </div>
-                        <div class="search-box">
-                            <label for="issue-search" class="sr-only">Search issues</label>
-                            <input type="search" id="issue-search" class="issue-search" placeholder="Search issues...">
+            <!-- Main Results Layout -->
+            <div class="results-main-grid">
+                
+                <!-- Left Column: Issues -->
+                <div class="issues-panel" id="issues-panel">
+                    <div class="issues-header">
+                        <h2 class="issues-title">Found Issues</h2>
+                        <div class="issues-controls">
+                            <div class="filter-tabs" id="filter-tabs" role="tablist" aria-label="Filter issues by severity">
+                                <button class="filter-tab active" data-filter="all" role="tab" aria-selected="true" id="tab-all">All</button>
+                                <button class="filter-tab" data-filter="critical" role="tab" aria-selected="false" id="tab-critical">Critical</button>
+                                <button class="filter-tab" data-filter="warning" role="tab" aria-selected="false" id="tab-warning">Warning</button>
+                            </div>
+                            <div class="search-box">
+                                <label for="issue-search" class="sr-only">Search issues</label>
+                                <input type="search" id="issue-search" class="issue-search" placeholder="Search issues...">
+                            </div>
                         </div>
                     </div>
+                    <div class="issues-list" id="issues-list" role="list">
+                        <!-- Populated by JS -->
+                    </div>
                 </div>
-                <div class="issues-list" id="issues-list" role="list">
-                    <!-- Populated by JS -->
+
+                <!-- Right Column: AI Panels -->
+                <div class="sidebar-panels">
+                    
+                    <!-- Visual Analysis Panel -->
+                    <div class="visual-panel" id="visual-panel" style="margin-bottom: 2rem;">
+                        <div class="or-header" style="background: linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%);">
+                            <h2 class="or-title">
+                                <span>📸</span> Visual Analysis
+                            </h2>
+                            <span class="or-badge">Marked Screenshot</span>
+                        </div>
+                        <div class="visual-content" style="padding: 1rem; background: var(--bg-card); border-radius: 0 0 var(--radius-lg) var(--radius-lg); border: 1px solid var(--border-color); border-top: none;">
+                            <img id="annotated-screenshot" src="" alt="Annotated Website Screenshot" style="width: 100%; border-radius: var(--radius-md); border: 1px solid var(--border-color); display: none;">
+                            <div id="screenshot-placeholder" style="text-align: center; padding: 2rem; color: var(--text-tertiary);">No screenshot available</div>
+                        </div>
+                    </div>
+
+                    <!-- Hugging Face Design Insights Panel -->
+                    <div class="openrouter-panel" id="openrouter-panel">
+                        <div class="or-header">
+                            <h2 class="or-title">
+                                <span>✨</span> Design Insights
+                            </h2>
+                            <span class="or-badge">Powered by Hugging Face</span>
+                        </div>
+                        
+                        <!-- Loading State -->
+                        <div id="or-loading" class="or-loading">
+                            <div class="or-spinner"></div>
+                            <p>Analyzing design alignment and UX patterns...</p>
+                        </div>
+                        
+                        <!-- Content State -->
+                        <div id="or-content" class="or-content hidden">
+                            <div class="or-summary" id="or-summary"></div>
+                            
+                            <h3 class="or-section-title">Top Priority Fixes</h3>
+                            <div class="or-fixes-list" id="or-fixes-list"></div>
+                            
+                            <h3 class="or-section-title">Design & UX Patterns</h3>
+                            <div class="or-design-list" id="or-design-list"></div>
+                            
+                            <div class="or-narrative" id="or-narrative"></div>
+                        </div>
+                        
+                        <!-- Error/Unavailable State -->
+                        <div id="or-error" class="or-error hidden">
+                            AI design insights are currently unavailable.
+                        </div>
+                    </div>
+
+
+
                 </div>
             </div>
 
-            <!-- AI Insights Panel -->
-            <div class="ai-panel" id="ai-panel">
-                <div class="ai-header">
-                    <h2 class="ai-title">
-                        <span class="ai-icon">🧠</span>
-                        AI Model Insights
-                    </h2>
-                    <span class="ai-badge" id="ai-badge">EfficientNet-B0 CNN</span>
-                </div>
-                <div class="ai-insights-list" id="ai-insights-list">
-                    <!-- Populated by JS -->
-                </div>
-            </div>
-
-            <!-- Limitations Notice (Requirement 8) -->
-            <div class="limitations-notice" id="results-limitations">
-                <h3>⚠️ Important Limitations</h3>
-                <ul id="limitations-list">
-                    <!-- Populated by JS from API response -->
-                </ul>
-            </div>
-
-            <!-- New Audit Button -->
+            <!-- New Audit / Export Buttons -->
             <div class="new-audit-section">
+                <button class="export-pdf-btn" id="export-pdf-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    Download PDF Report
+                </button>
                 <button class="new-audit-btn" id="new-audit-btn">Run New Audit</button>
             </div>
         </div>
     </section>
 
-    <!-- About WCAG Section (Requirement 1) -->
+    <!-- About WCAG Section -->
     <section class="about-section" id="about-section">
         <div class="about-container">
-            <h2 class="section-title">Understanding <span class="gradient-text">WCAG Accessibility</span></h2>
+            <h2 class="section-title">Understanding WCAG Accessibility</h2>
             <p class="section-subtitle">
                 The Web Content Accessibility Guidelines (WCAG) 2.1 define how to make web content 
-                more accessible to people with disabilities. Our tool checks for these key principles:
+                more accessible. Our tool checks for these key principles:
             </p>
             <div class="wcag-grid">
                 <div class="wcag-card" id="wcag-contrast">
@@ -271,39 +311,59 @@
                     <div class="wcag-icon">📊</div>
                     <h3>Accessibility Score</h3>
                     <p>Our scoring system starts at 100 and deducts points for each violation found. 
-                       Critical issues (like missing alt text) deduct more than warnings 
-                       (like generic link text). The CNN model adds AI-detected deductions.</p>
+                       Critical issues deduct more than warnings. 
+                       The CNN model adds AI-detected deductions.</p>
                     <div class="wcag-tag">Grades: A (90+) → F (below 60)</div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Limitations Section (Requirement 8) -->
+    <!-- History Section -->
+    <section class="history-section hidden" id="history-section">
+        <div class="history-container">
+            <h2 class="section-title">Audit History</h2>
+            <div class="history-stats" id="history-stats">
+                <!-- Populated by JS -->
+            </div>
+            <div class="table-responsive">
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>URL</th>
+                            <th>Score</th>
+                            <th>Grade</th>
+                            <th>Issues</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-tbody">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- Limitations Section -->
     <section class="limitations-section" id="limitations-section">
         <div class="limitations-container">
-            <h2 class="section-title">Known <span class="gradient-text">Limitations</span></h2>
+            <h2 class="section-title">Known Limitations</h2>
             <div class="limitations-grid">
                 <div class="limitation-card" id="limit-ai">
                     <div class="limitation-icon">🤖</div>
                     <h3>AI Model Limitations</h3>
-                    <p>The EfficientNet-B0 CNN model is trained on a synthetic dataset of only 
-                       500 samples. It may miss real-world edge cases, produce false positives 
-                       on unusual layouts, and cannot fully replace human expert review.</p>
+                    <p>The ViT-B/16 model is trained on a robust real-world dataset of ~5,500 
+                       samples (trained in April 2026). It covers approximately 70% of WCAG guidelines, 
+                       significantly reducing false positives and effectively handling real-world edge cases.</p>
                 </div>
                 <div class="limitation-card" id="limit-rules">
                     <div class="limitation-icon">📋</div>
                     <h3>Rule-Based Coverage</h3>
-                    <p>Automated rule checks cover approximately 30-40% of WCAG 2.1 criteria. 
-                       Many accessibility issues (like keyboard trap detection, cognitive load, 
-                       or screen reader compatibility) require manual testing.</p>
-                </div>
-                <div class="limitation-card" id="limit-dataset">
-                    <div class="limitation-icon">📦</div>
-                    <h3>Small Dataset</h3>
-                    <p>The training dataset contains 500 synthetic samples — far fewer than 
-                       production ML systems. Model accuracy improves with larger, more diverse 
-                       real-world datasets (ideally 10,000+ labeled screenshots).</p>
+                    <p>Automated rule checks combined with AI visual analysis cover approximately 70% of WCAG 2.1 criteria. 
+                       Remaining accessibility issues (like keyboard trap detection, cognitive load, 
+                       or screen reader compatibility) require manual expert testing.</p>
                 </div>
                 <div class="limitation-card" id="limit-dynamic">
                     <div class="limitation-icon">⚡</div>
@@ -320,8 +380,7 @@
     <footer class="footer" id="footer">
         <div class="footer-inner">
             <p>AccessLens — AI-Powered Accessibility Audit Tool</p>
-            <p class="footer-sub">Built with FastAPI • BeautifulSoup • Selenium • EfficientNet-B0 • PyTorch</p>
-            <p class="footer-sub">College Project — Accessibility Audit using Deep Learning</p>
+            <p class="footer-sub">Built with FastAPI • BeautifulSoup • Selenium • ViT-B/16 • OpenRouter</p>
         </div>
     </footer>
 

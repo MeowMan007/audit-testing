@@ -1,516 +1,426 @@
 """
-Synthetic Dataset Generator — Creates labeled accessibility violation screenshots.
+Advanced Dataset Pipeline — Real-World Web Accessibility Dataset.
 
-PURPOSE (Requirement 3 — Dataset):
-    This module generates a synthetic dataset of web page screenshots with
-    deliberate WCAG violations injected. This is the "Custom Dataset" described
-    in the project spec: 500 examples of good vs bad accessibility patterns.
+DATA SOURCES (Multi-source strategy):
+  1. osunlp/Multimodal-Mind2Web (HuggingFace) — real browser screenshots
+     of websites during task completion. 10K+ diverse real webpage images.
+  2. biglab/webui-7k (HuggingFace) — 7,000 real mobile/web UI screenshots.
+  3. Synthetic augmentation — auto-generated violation pages to balance classes.
 
-HOW IT WORKS:
-    1. Generates random HTML pages with normal (accessible) content
-    2. Randomly injects 0-3 accessibility violations per page
-    3. Renders each page using Selenium headless Chrome
-    4. Saves a screenshot (PNG) and a label vector (JSON)
+WEAK SUPERVISION LABELING:
+  Since these real datasets have no accessibility labels, we apply
+  "Weak Supervision" — a set of heuristic labeling functions (LFs) that
+  analyze each screenshot using OpenCV to assign probabilistic labels:
 
-VIOLATION CATEGORIES (6 classes):
-    0 - low_contrast:   Text with insufficient color contrast (< 4.5:1)
-    1 - small_text:     Text smaller than 10px
-    2 - missing_alt:    Images without alt attributes
-    3 - small_targets:  Click targets smaller than 44x44px
-    4 - bad_heading:    Skipped or missing heading hierarchy
-    5 - poor_layout:    Cluttered, overlapping, or illegible layouts
+  LF-1: low_contrast   → Detect low-variance gray regions (histogram analysis)
+  LF-2: small_text     → Detect very fine text patterns (frequency analysis)
+  LF-3: poor_layout    → Detect cluttered/dense pixel regions (entropy)
+  LF-4: small_targets  → Detect small isolated interactive regions
+  LF-5: bad_heading    → Structural heuristic (from URL/page type metadata)
+  LF-6: missing_alt    → Not directly detectable from screenshot; use
+                          synthetic data for this class.
 
-OUTPUT FORMAT (JSON per sample):
-    {
-        "image": "dataset/images/img_0001.png",
-        "labels": [1, 0, 1, 0, 0, 0],
-        "label_names": ["low_contrast", "missing_alt"],
-        "label": "bad_contrast"  // primary label for simple classification
-    }
-
-DATA SPLIT:
-    - Training:   80% (400 samples)
-    - Validation: 10% (50 samples)
-    - Test:       10% (50 samples)
+TOTAL DATASET SIZE: ~5,000 samples (real) + 500 synthetic = ~5,500 total
+SPLIT: 70% train / 15% val / 15% test
 """
 import json
 import os
 import random
 import logging
 import hashlib
-from typing import List, Dict, Tuple
 from pathlib import Path
+from typing import List, Dict, Optional
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# ============================================================
-# Violation Class Definitions
-# ============================================================
 VIOLATION_CLASSES = [
-    "low_contrast",    # 0 - Text contrast < 4.5:1
-    "small_text",      # 1 - Font size < 10px
-    "missing_alt",     # 2 - Images without alt text
-    "small_targets",   # 3 - Buttons/links < 44x44px
-    "bad_heading",     # 4 - Skipped heading levels
-    "poor_layout",     # 5 - Cluttered/overlapping elements
+    "low_contrast",
+    "small_text",
+    "missing_alt",
+    "small_targets",
+    "bad_heading",
+    "poor_layout",
 ]
-
 NUM_CLASSES = len(VIOLATION_CLASSES)
 
-# ============================================================
-# Content Templates for Realistic HTML Generation
-# ============================================================
+# ─────────────────────────────────────────────
+# Weak Supervision Labeling Functions (OpenCV)
+# ─────────────────────────────────────────────
+
+def _lf_low_contrast(img_array: np.ndarray) -> float:
+    """LF-1: Low contrast → low std-dev in luminance channel."""
+    gray = 0.299*img_array[:,:,0] + 0.587*img_array[:,:,1] + 0.114*img_array[:,:,2]
+    std = float(np.std(gray))
+    # Low contrast if std < 35 (flat, washed-out image)
+    return 1.0 if std < 35 else (0.6 if std < 55 else 0.0)
+
+def _lf_small_text(img_array: np.ndarray) -> float:
+    """LF-2: Small text → high-frequency edges in small local regions."""
+    try:
+        import cv2
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+        # Laplacian measures sharpness/fine detail
+        lap_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+        # Very high freq → fine/tiny text
+        return 1.0 if lap_var > 800 else (0.5 if lap_var > 500 else 0.0)
+    except Exception:
+        return 0.0
+
+def _lf_poor_layout(img_array: np.ndarray) -> float:
+    """LF-3: Poor layout → high spatial entropy (cluttered)."""
+    gray = np.mean(img_array, axis=2).astype(np.uint8)
+    hist, _ = np.histogram(gray, bins=32, range=(0,256))
+    hist = hist / hist.sum() + 1e-10
+    entropy = float(-np.sum(hist * np.log2(hist)))
+    # High entropy = cluttered content
+    return 1.0 if entropy > 4.8 else (0.5 if entropy > 4.2 else 0.0)
+
+def _lf_small_targets(img_array: np.ndarray) -> float:
+    """LF-4: Small targets → many small isolated high-contrast blobs."""
+    try:
+        import cv2
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        small = sum(1 for c in contours if 10 < cv2.contourArea(c) < 500)
+        return 1.0 if small > 40 else (0.5 if small > 20 else 0.0)
+    except Exception:
+        return 0.0
+
+def label_image(img_array: np.ndarray) -> List[int]:
+    """Apply all weak supervision LFs to produce binary labels."""
+    scores = [
+        _lf_low_contrast(img_array),  # 0 low_contrast
+        _lf_small_text(img_array),     # 1 small_text
+        0.0,                           # 2 missing_alt (not detectable visually)
+        _lf_small_targets(img_array),  # 3 small_targets
+        0.0,                           # 4 bad_heading (structural, not visual)
+        _lf_poor_layout(img_array),    # 5 poor_layout
+    ]
+    return [1 if s >= 0.6 else 0 for s in scores]
+
+
+# ─────────────────────────────────────────────
+# Synthetic HTML Generator (for missing_alt, bad_heading)
+# ─────────────────────────────────────────────
+
 SAMPLE_TITLES = [
-    "Welcome to Our Store", "About Us - Company", "Contact Information",
-    "Product Catalog", "News & Updates", "Services Overview",
-    "FAQ - Help Center", "Blog - Latest Posts", "Team Members",
-    "Privacy Policy", "Terms of Service", "Pricing Plans",
+    "Product Catalog", "Contact Us", "About Our Team",
+    "Services Overview", "Blog Posts", "FAQ Center",
+    "Pricing Plans", "Home Page", "News Updates",
 ]
-
 SAMPLE_PARAGRAPHS = [
-    "We provide high-quality products and services to customers worldwide.",
-    "Our team of experts is dedicated to delivering the best solutions.",
-    "Contact us today to learn more about our offerings and pricing.",
-    "Browse our extensive catalog of products in various categories.",
-    "Stay updated with the latest news and announcements from our team.",
-    "Our services are designed to meet the needs of modern businesses.",
-    "Read our frequently asked questions for quick answers to common queries.",
-    "Explore our blog for insights, tutorials, and industry analysis.",
+    "We deliver high-quality solutions for modern businesses worldwide.",
+    "Our team of experts is ready to help you achieve your goals.",
+    "Contact us today and discover how we can serve your needs.",
+    "Browse our extensive catalog across multiple product categories.",
 ]
+GOOD_CONTRAST = [("#1a1a1a","#ffffff"),("#ffffff","#333333"),("#000080","#ffffff")]
+BAD_CONTRAST  = [("#aaaaaa","#ffffff"),("#cccccc","#eeeeee"),("#888888","#dddddd")]
 
-SAMPLE_IMAGES = [
-    ("Product photo showing electronics", "electronics.jpg"),
-    ("Team photo of employees", "team.jpg"),
-    ("Office building exterior", "office.jpg"),
-    ("Customer testimonial portrait", "testimonial.jpg"),
-    ("Infographic with data visualization", "infographic.png"),
-    ("Logo of the company", "logo.png"),
-    ("Hero banner for the homepage", "hero.jpg"),
-    ("Navigation menu icon", "menu-icon.svg"),
-]
 
-# ============================================================
-# Color Pairs: (text_color, bg_color, contrast_label)
-# ============================================================
-GOOD_CONTRAST_PAIRS = [
-    ("#000000", "#ffffff", "good"),  # Black on white = 21:1
-    ("#1a1a1a", "#f5f5f5", "good"),  # Near-black on near-white
-    ("#ffffff", "#333333", "good"),  # White on dark gray
-    ("#0000ff", "#ffffff", "good"),  # Blue on white
-    ("#ffffff", "#006600", "good"),  # White on dark green
-]
+def generate_synthetic_html(violations: List[int]) -> str:
+    title = random.choice(SAMPLE_TITLES)
+    text_c, bg_c = random.choice(BAD_CONTRAST if 0 in violations else GOOD_CONTRAST)
+    font_size = random.choice(["7px","8px"]) if 1 in violations else "16px"
+    include_alt = (2 not in violations)
+    btn_size = "18px" if 3 in violations else "44px"
+    heading = "<h1>%s</h1>\n<h4>Details</h4>" if 4 in violations else "<h1>%s</h1>\n<h2>Details</h2>"
+    heading = heading % title
+    layout_css = ".content{position:relative}" if 5 in violations else ".content{max-width:800px;margin:0 auto}"
 
-BAD_CONTRAST_PAIRS = [
-    ("#999999", "#ffffff", "bad"),   # Light gray on white ~2.8:1
-    ("#cccccc", "#ffffff", "bad"),   # Very light gray on white ~1.6:1
-    ("#aaaaaa", "#dddddd", "bad"),   # Light gray on lighter gray ~1.4:1
-    ("#ff9999", "#ffcccc", "bad"),   # Pink on lighter pink ~1.3:1
-    ("#88cc88", "#ccffcc", "bad"),   # Light green on very light green
-    ("#8888ff", "#ccccff", "bad"),   # Light blue on lighter blue
-]
+    imgs = ""
+    for i in range(3):
+        if include_alt:
+            imgs += f'<img src="img{i}.jpg" alt="Sample image {i}" width="200" height="150">\n'
+        else:
+            imgs += f'<img src="img{i}.jpg" width="200" height="150">\n'
 
+    paras = "\n".join(f"<p>{p}</p>" for p in random.sample(SAMPLE_PARAGRAPHS, 3))
+
+    return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title}</title>
+<style>
+body{{font-family:Arial,sans-serif;color:{text_c};background:{bg_c};font-size:{font_size};margin:0;padding:20px}}
+{layout_css}
+button{{min-width:{btn_size};min-height:{btn_size};padding:8px;cursor:pointer}}
+</style></head><body>
+<nav><a href="/">Home</a> <a href="/about">About</a></nav>
+<div class="content">{heading}{paras}
+<div>{imgs}</div>
+<button>Subscribe</button></div>
+</body></html>"""
+
+
+# ─────────────────────────────────────────────
+# Main Dataset Generator
+# ─────────────────────────────────────────────
 
 class DatasetGenerator:
-    """Generates synthetic accessibility violation screenshots.
-    
-    Creates HTML pages with controlled violations, renders them
-    via Selenium, and produces labeled image datasets for training
-    the AccessibilityNet CNN model.
-    
-    Usage:
-        gen = DatasetGenerator(output_dir="dataset", num_samples=500)
-        gen.generate()
+    """
+    Multi-source dataset generator:
+      - Downloads real web UI screenshots from HuggingFace
+      - Labels them with weak supervision (OpenCV heuristics)
+      - Generates targeted synthetic samples for hard-to-detect classes
+      - Produces a balanced ~5,500 sample dataset
     """
 
-    def __init__(self, output_dir: str = "dataset", num_samples: int = 500):
+    def __init__(self, output_dir: str = "dataset", num_synthetic: int = 500,
+                 num_real: int = 5000):
         self.output_dir = Path(output_dir)
-        self.num_samples = num_samples
         self.images_dir = self.output_dir / "images"
+        self.num_synthetic = num_synthetic
+        self.num_real = num_real
         self.metadata: List[Dict] = []
 
     def generate(self):
-        """Generate the complete dataset.
-        
-        Pipeline:
-        1. Create output directories
-        2. Generate HTML pages with random violations
-        3. Render screenshots with Selenium
-        4. Save metadata JSON with labels
-        5. Create train/val/test splits
-        """
         self.images_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Generating {self.num_samples} samples to {self.output_dir}")
+        logger.info("=== AccessLens Dataset Generator ===")
 
-        # Try Selenium first
+        # Phase 1: Real data from HuggingFace
+        real_count = self._load_real_data()
+
+        # Phase 2: Synthetic data for hard classes (missing_alt, bad_heading)
+        synth_count = self._generate_synthetic()
+
+        self._save_metadata()
+        self._create_splits()
+        logger.info(f"Done: {real_count} real + {synth_count} synthetic = {len(self.metadata)} total samples")
+
+    # ── Phase 1: Real Data ──────────────────────────────────────────────
+
+    def _load_real_data(self) -> int:
+        """Download real web screenshots from HuggingFace datasets."""
+        count = 0
+
+        # Try Mind2Web multimodal first (real browser screenshots)
+        count += self._load_hf_dataset(
+            "osunlp/Multimodal-Mind2Web",
+            split="train",
+            image_col="screenshot",
+            max_samples=min(3000, self.num_real // 2),
+        )
+
+        # Try WebUI-7k dataset
+        if count < self.num_real:
+            count += self._load_hf_dataset(
+                "biglab/webui-7k",
+                split="train",
+                image_col="image",
+                max_samples=min(2000, self.num_real - count),
+            )
+
+        # Fallback: AtomBlock-WebUI
+        if count < 100:
+            count += self._load_hf_dataset(
+                "ZhihaoNan/AtomBlock-WebUI",
+                split="train",
+                image_col="image",
+                max_samples=min(2000, self.num_real),
+            )
+
+        return count
+
+    def _load_hf_dataset(self, dataset_id: str, split: str,
+                         image_col: str, max_samples: int) -> int:
+        """Load images from a HuggingFace dataset and apply weak supervision."""
+        try:
+            from datasets import load_dataset
+            from PIL import Image as PILImage
+        except ImportError:
+            logger.warning("HuggingFace `datasets` not installed. Run: pip install datasets")
+            return 0
+
+        logger.info(f"Loading {dataset_id} ({split}, up to {max_samples} samples)...")
+        try:
+            ds = load_dataset(dataset_id, split=split, streaming=True,
+                              trust_remote_code=True)
+            count = 0
+            for item in ds:
+                if count >= max_samples:
+                    break
+                try:
+                    img = item.get(image_col)
+                    if img is None:
+                        continue
+                    # Convert to PIL if needed
+                    if not hasattr(img, 'save'):
+                        continue
+                    img = img.convert("RGB").resize((224, 224))
+                    arr = np.array(img)
+
+                    # Weak supervision labeling
+                    labels = label_image(arr)
+                    label_names = [VIOLATION_CLASSES[i] for i, v in enumerate(labels) if v]
+                    primary = label_names[0] if label_names else "clean"
+
+                    idx = len(self.metadata)
+                    fname = f"real_{idx:05d}.png"
+                    img.save(self.images_dir / fname)
+
+                    self.metadata.append({
+                        "image": f"images/{fname}",
+                        "labels": labels,
+                        "label_names": label_names,
+                        "label": primary,
+                        "source": dataset_id,
+                    })
+                    count += 1
+                    if count % 250 == 0:
+                        logger.info(f"  {dataset_id}: {count}/{max_samples} loaded")
+                except Exception as e:
+                    logger.debug(f"  Skipping item: {e}")
+                    continue
+            logger.info(f"  Loaded {count} samples from {dataset_id}")
+            return count
+        except Exception as e:
+            logger.warning(f"Could not load {dataset_id}: {e}")
+            return 0
+
+    # ── Phase 2: Synthetic Targeted Samples ────────────────────────────
+
+    def _generate_synthetic(self) -> int:
+        """Generate synthetic HTML screenshots for hard-to-detect classes."""
         use_selenium = self._check_selenium()
-        
-        for i in range(self.num_samples):
-            if (i + 1) % 50 == 0:
-                logger.info(f"  Progress: {i + 1}/{self.num_samples}")
+        count = 0
+        # Weight: more missing_alt and bad_heading since those can't be detected visually
+        violation_weights = [
+            ([], 0.15),
+            ([0], 0.10), ([1], 0.08), ([2], 0.18), ([3], 0.08),
+            ([4], 0.18), ([5], 0.08),
+            ([0,2], 0.08), ([2,4], 0.07),
+        ]
+        choices, weights = zip(*violation_weights)
 
-            # Decide which violations to inject (0-3 per sample)
-            num_violations = random.choices([0, 1, 2, 3], weights=[0.2, 0.35, 0.3, 0.15])[0]
-            violations = random.sample(range(NUM_CLASSES), min(num_violations, NUM_CLASSES))
-
-            # Generate HTML with violations
-            html = self._generate_html(violations)
-
-            # Create multi-hot label vector
+        for i in range(self.num_synthetic):
+            violations = list(random.choices(choices, weights=weights)[0])
+            html = generate_synthetic_html(violations)
             labels = [1 if j in violations else 0 for j in range(NUM_CLASSES)]
             label_names = [VIOLATION_CLASSES[j] for j in violations]
-            
-            # Primary label for simple classification
-            primary_label = "good" if not violations else label_names[0]
 
-            # Save screenshot
-            img_filename = f"img_{i:04d}.png"
-            img_path = self.images_dir / img_filename
-
+            fname = f"synth_{i:04d}.png"
+            fpath = self.images_dir / fname
             if use_selenium:
-                self._render_with_selenium(html, str(img_path))
+                self._render_selenium(html, str(fpath))
             else:
-                self._render_with_pillow(html, str(img_path), violations)
+                self._render_pillow(html, str(fpath), violations)
 
-            # Record metadata
             self.metadata.append({
-                "image": f"images/{img_filename}",
+                "image": f"images/{fname}",
                 "labels": labels,
                 "label_names": label_names,
-                "label": primary_label,
-                "num_violations": num_violations,
+                "label": label_names[0] if label_names else "clean",
+                "source": "synthetic",
             })
-
-        # Save metadata
-        self._save_metadata()
-        
-        # Create train/val/test splits
-        self._create_splits()
-
-        logger.info(f"Dataset generation complete: {len(self.metadata)} samples")
+            count += 1
+            if (i+1) % 100 == 0:
+                logger.info(f"  Synthetic: {i+1}/{self.num_synthetic}")
+        return count
 
     def _check_selenium(self) -> bool:
-        """Check if Selenium + Chrome is available."""
         try:
             from selenium import webdriver
             from selenium.webdriver.chrome.options import Options
-            options = Options()
-            options.add_argument("--headless=new")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            driver = webdriver.Chrome(options=options)
-            driver.quit()
+            opts = Options()
+            opts.add_argument("--headless=new")
+            opts.add_argument("--no-sandbox")
+            opts.add_argument("--disable-dev-shm-usage")
+            d = webdriver.Chrome(options=opts)
+            d.quit()
             return True
         except Exception:
-            logger.warning("Selenium not available — using Pillow for image generation")
             return False
 
-    def _generate_html(self, violations: List[int]) -> str:
-        """Generate an HTML page with specified violations injected.
-        
-        Args:
-            violations: List of violation class indices to inject
-            
-        Returns:
-            Complete HTML string
-        """
-        title = random.choice(SAMPLE_TITLES)
-        
-        # Default accessible styles
-        text_color = "#1a1a1a"
-        bg_color = "#ffffff"
-        font_size = "16px"
-        heading_structure = "proper"
-        include_alts = True
-        button_size = "44px"
-        layout_style = "clean"
-
-        # Inject violations
-        if 0 in violations:  # low_contrast
-            pair = random.choice(BAD_CONTRAST_PAIRS)
-            text_color, bg_color = pair[0], pair[1]
-
-        if 1 in violations:  # small_text
-            font_size = random.choice(["8px", "9px", "7px", "6px"])
-
-        if 2 in violations:  # missing_alt
-            include_alts = False
-
-        if 3 in violations:  # small_targets
-            button_size = random.choice(["18px", "20px", "22px", "15px"])
-
-        if 4 in violations:  # bad_heading
-            heading_structure = "broken"
-
-        if 5 in violations:  # poor_layout
-            layout_style = "cluttered"
-
-        # Build heading section
-        if heading_structure == "proper":
-            headings_html = f"<h1>{title}</h1>\n<h2>Our Services</h2>\n<h3>Web Development</h3>"
-        else:
-            # Skipped levels: h1 -> h4 (skipping h2, h3)
-            headings_html = f"<h1>{title}</h1>\n<h4>Our Services</h4>\n<h6>Web Development</h6>"
-
-        # Build image section
-        img_data = random.sample(SAMPLE_IMAGES, min(3, len(SAMPLE_IMAGES)))
-        images_html = ""
-        for alt_text, filename in img_data:
-            if include_alts:
-                images_html += f'<img src="{filename}" alt="{alt_text}" width="200" height="150">\n'
-            else:
-                images_html += f'<img src="{filename}" width="200" height="150">\n'
-
-        # Build paragraphs
-        paragraphs = random.sample(SAMPLE_PARAGRAPHS, min(3, len(SAMPLE_PARAGRAPHS)))
-        paragraphs_html = "\n".join(f"<p>{p}</p>" for p in paragraphs)
-
-        # Build buttons
-        buttons_html = f"""
-        <button style="padding: 10px 20px; min-width: {button_size}; min-height: {button_size};">
-            Subscribe
-        </button>
-        <a href="#contact" style="display: inline-block; padding: 8px 16px; min-width: {button_size}; min-height: {button_size};">
-            Contact Us
-        </a>
-        """
-
-        # Layout style
-        if layout_style == "cluttered":
-            layout_css = """
-                .content { position: relative; }
-                .content p { position: absolute; top: 10px; left: 10px; }
-                .overlap { margin-top: -50px; margin-left: 100px; opacity: 0.7; }
-            """
-            extra_class = "overlap"
-        else:
-            layout_css = ".content { max-width: 800px; margin: 0 auto; padding: 20px; }"
-            extra_class = ""
-
-        html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title}</title>
-    <style>
-        body {{
-            font-family: Arial, sans-serif;
-            color: {text_color};
-            background-color: {bg_color};
-            font-size: {font_size};
-            line-height: 1.5;
-            margin: 0;
-            padding: 20px;
-        }}
-        {layout_css}
-        nav {{ padding: 10px; background: #f0f0f0; margin-bottom: 20px; }}
-        nav a {{ margin-right: 15px; color: {text_color}; text-decoration: none; }}
-        button, .btn {{ cursor: pointer; border: 1px solid #999; border-radius: 4px; }}
-        .images {{ display: flex; gap: 10px; margin: 20px 0; flex-wrap: wrap; }}
-        .images img {{ border: 1px solid #ddd; border-radius: 4px; }}
-        footer {{ margin-top: 40px; padding: 20px; border-top: 1px solid #ddd; font-size: 14px; }}
-    </style>
-</head>
-<body>
-    <nav>
-        <a href="/">Home</a>
-        <a href="/about">About</a>
-        <a href="/services">Services</a>
-        <a href="/contact">Contact</a>
-    </nav>
-
-    <div class="content {extra_class}">
-        {headings_html}
-        {paragraphs_html}
-        
-        <div class="images">
-            {images_html}
-        </div>
-
-        <form>
-            <label for="email">Email Address</label>
-            <input type="email" id="email" name="email" placeholder="you@example.com">
-            {buttons_html}
-        </form>
-    </div>
-
-    <footer>
-        <p>&copy; 2026 {title}. All rights reserved.</p>
-    </footer>
-</body>
-</html>"""
-        return html
-
-    def _render_with_selenium(self, html: str, output_path: str):
-        """Render HTML to a screenshot using Selenium headless Chrome."""
+    def _render_selenium(self, html: str, path: str):
         try:
+            import tempfile
             from selenium import webdriver
             from selenium.webdriver.chrome.options import Options
-            import tempfile
-
-            options = Options()
-            options.add_argument("--headless=new")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--window-size=1280,720")
-
-            driver = webdriver.Chrome(options=options)
-            
-            # Write HTML to temp file and open it
-            with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode='w', encoding='utf-8') as f:
-                f.write(html)
-                temp_path = f.name
-            
-            driver.get(f"file://{temp_path}")
-            driver.save_screenshot(output_path)
-            driver.quit()
-            
-            os.unlink(temp_path)
+            opts = Options()
+            opts.add_argument("--headless=new")
+            opts.add_argument("--no-sandbox")
+            opts.add_argument("--disable-dev-shm-usage")
+            opts.add_argument("--window-size=1280,720")
+            d = webdriver.Chrome(options=opts)
+            with tempfile.NamedTemporaryFile(suffix=".html", delete=False,
+                                             mode='w', encoding='utf-8') as f:
+                f.write(html); tmp = f.name
+            d.get(f"file://{tmp}")
+            d.save_screenshot(path)
+            d.quit()
+            os.unlink(tmp)
         except Exception as e:
-            logger.error(f"Selenium render failed: {e}")
-            self._render_with_pillow(html, output_path, [])
+            logger.debug(f"Selenium failed: {e}")
+            self._render_pillow(html, path, [])
 
-    def _render_with_pillow(self, html: str, output_path: str, violations: List[int]):
-        """Fallback: Generate a synthetic screenshot using Pillow.
-        
-        Creates a representative image without needing a browser.
-        Uses colors, font sizes, and layout patterns that reflect
-        the violations being simulated.
-        """
+    def _render_pillow(self, html: str, path: str, violations: List[int]):
         try:
             from PIL import Image, ImageDraw, ImageFont
-        except ImportError:
-            # Create a minimal placeholder
-            img = Image.new("RGB", (1280, 720), (255, 255, 255))
-            img.save(output_path)
-            return
+            seed = int(hashlib.md5(html.encode()).hexdigest()[:8], 16)
+            rng = random.Random(seed)
+            text_c_hex = rng.choice(BAD_CONTRAST if 0 in violations else GOOD_CONTRAST)[0]
+            def hex2rgb(h):
+                h=h.lstrip('#'); return tuple(int(h[i:i+2],16) for i in (0,2,4))
+            bg = (255,255,255); text = hex2rgb(text_c_hex)
+            img = Image.new("RGB",(1280,720),bg)
+            draw = ImageDraw.Draw(img)
+            try:
+                font_size = 8 if 1 in violations else 16
+                font = ImageFont.truetype("arial.ttf", font_size)
+            except Exception:
+                font = ImageFont.load_default()
+            draw.rectangle([0,0,1280,50],fill=(240,240,240))
+            draw.text((20,15),"Home  About  Services  Contact",fill=(50,50,50),font=font)
+            draw.text((40,70),rng.choice(SAMPLE_TITLES),fill=text,font=font)
+            y=110
+            for p in rng.sample(SAMPLE_PARAGRAPHS,3):
+                draw.text((40,y),p,fill=text,font=font); y+=30
+            img.save(path)
+        except Exception as e:
+            logger.warning(f"Pillow render failed: {e}")
+            from PIL import Image
+            Image.new("RGB",(1280,720),(200,200,200)).save(path)
 
-        # Deterministic seed from html content for reproducibility
-        seed = int(hashlib.md5(html.encode()).hexdigest()[:8], 16)
-        rng = random.Random(seed)
-
-        # Extract colors from violations
-        if 0 in violations:  # low_contrast
-            pair = rng.choice(BAD_CONTRAST_PAIRS)
-            text_color = pair[0]
-            bg_color = pair[1]
-        else:
-            pair = rng.choice(GOOD_CONTRAST_PAIRS)
-            text_color = pair[0]
-            bg_color = pair[1]
-
-        # Convert hex to RGB
-        def hex_to_rgb(h):
-            h = h.lstrip('#')
-            return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
-
-        bg_rgb = hex_to_rgb(bg_color)
-        text_rgb = hex_to_rgb(text_color)
-
-        img = Image.new("RGB", (1280, 720), bg_rgb)
-        draw = ImageDraw.Draw(img)
-
-        # Try to load a font
-        try:
-            font_size = 8 if 1 in violations else 16
-            font = ImageFont.truetype("arial.ttf", font_size)
-            title_font = ImageFont.truetype("arial.ttf", font_size * 2)
-        except (OSError, IOError):
-            font = ImageFont.load_default()
-            title_font = font
-
-        # Draw nav bar
-        draw.rectangle([0, 0, 1280, 50], fill=(240, 240, 240))
-        draw.text((20, 15), "Home    About    Services    Contact", fill=(50, 50, 50), font=font)
-
-        # Draw title
-        title = rng.choice(SAMPLE_TITLES)
-        draw.text((40, 70), title, fill=text_rgb, font=title_font)
-
-        # Draw paragraphs
-        y = 130
-        for para in rng.sample(SAMPLE_PARAGRAPHS, 3):
-            draw.text((40, y), para, fill=text_rgb, font=font)
-            y += 30
-
-        # Draw image placeholders
-        y += 20
-        for i in range(3):
-            x = 40 + i * 220
-            draw.rectangle([x, y, x + 200, y + 150], outline=(200, 200, 200), width=2)
-            if 2 not in violations:  # has alt text
-                draw.text((x + 10, y + 65), "[Image]", fill=(150, 150, 150), font=font)
-            else:
-                draw.text((x + 10, y + 65), "[No alt]", fill=(255, 100, 100), font=font)
-
-        # Draw buttons
-        y += 180
-        btn_size = 18 if 3 in violations else 44
-        draw.rectangle([40, y, 40 + max(btn_size, 120), y + btn_size], 
-                       outline=(100, 100, 100), fill=(230, 230, 250))
-        draw.text((50, y + 5), "Subscribe", fill=text_rgb, font=font)
-
-        # Draw cluttered overlap if poor_layout
-        if 5 in violations:
-            for _ in range(5):
-                ox = rng.randint(0, 1200)
-                oy = rng.randint(0, 650)
-                draw.rectangle([ox, oy, ox + 200, oy + 60], fill=bg_rgb, outline=text_rgb)
-                draw.text((ox + 10, oy + 20), rng.choice(SAMPLE_PARAGRAPHS)[:30], fill=text_rgb, font=font)
-
-        img.save(output_path)
+    # ── Metadata & Splits ──────────────────────────────────────────────
 
     def _save_metadata(self):
-        """Save dataset metadata to JSON file."""
-        metadata_path = self.output_dir / "metadata.json"
-        with open(metadata_path, "w") as f:
+        path = self.output_dir / "metadata.json"
+        sources = {}
+        for s in self.metadata:
+            src = s.get("source","unknown")
+            sources[src] = sources.get(src,0)+1
+        with open(path,"w") as f:
             json.dump({
                 "num_samples": len(self.metadata),
                 "num_classes": NUM_CLASSES,
                 "class_names": VIOLATION_CLASSES,
+                "sources": sources,
                 "samples": self.metadata,
-            }, f, indent=2)
-        logger.info(f"Metadata saved to {metadata_path}")
+            },f,indent=2)
+        logger.info(f"Metadata saved → {path}")
+        logger.info(f"Source breakdown: {sources}")
 
     def _create_splits(self):
-        """Split dataset into train/val/test sets (80/10/10).
-        
-        Saves split indices to separate JSON files for reproducibility.
-        """
         indices = list(range(len(self.metadata)))
         random.shuffle(indices)
-
         n = len(indices)
-        train_end = int(n * 0.8)
-        val_end = int(n * 0.9)
-
-        splits = {
-            "train": indices[:train_end],
-            "val": indices[train_end:val_end],
-            "test": indices[val_end:],
-        }
-
-        splits_path = self.output_dir / "splits.json"
-        with open(splits_path, "w") as f:
-            json.dump(splits, f, indent=2)
-
-        logger.info(
-            f"Splits created — Train: {len(splits['train'])}, "
-            f"Val: {len(splits['val'])}, Test: {len(splits['test'])}"
-        )
+        train_end = int(n*0.70)
+        val_end   = int(n*0.85)
+        splits = {"train":indices[:train_end],"val":indices[train_end:val_end],"test":indices[val_end:]}
+        with open(self.output_dir/"splits.json","w") as f:
+            json.dump(splits,f,indent=2)
+        logger.info(f"Splits → Train:{len(splits['train'])} Val:{len(splits['val'])} Test:{len(splits['test'])}")
 
 
-# ============================================================
-# CLI Entry Point
-# ============================================================
 if __name__ == "__main__":
     import argparse
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-
-    parser = argparse.ArgumentParser(description="Generate accessibility violation dataset")
-    parser.add_argument("--output", default="dataset", help="Output directory")
-    parser.add_argument("--samples", type=int, default=500, help="Number of samples")
-    args = parser.parse_args()
-
-    gen = DatasetGenerator(output_dir=args.output, num_samples=args.samples)
-    gen.generate()
+    p = argparse.ArgumentParser()
+    p.add_argument("--output",default="dataset")
+    p.add_argument("--real",type=int,default=5000)
+    p.add_argument("--synthetic",type=int,default=500)
+    args = p.parse_args()
+    DatasetGenerator(args.output, args.synthetic, args.real).generate()

@@ -27,12 +27,33 @@ const els = {
     issueSearch: document.getElementById('issue-search'),
     aiInsightsList: document.getElementById('ai-insights-list'),
     aiBadge: document.getElementById('ai-badge'),
+    attentionMapContainer: document.getElementById('attention-map-container'),
+    attentionMapImg: document.getElementById('attention-map-img'),
     limitationsList: document.getElementById('limitations-list'),
     newAuditBtn: document.getElementById('new-audit-btn'),
+    exportPdfBtn: document.getElementById('export-pdf-btn'),
+    navHistory: document.getElementById('nav-history'),
+    historySection: document.getElementById('history-section'),
+    historyTbody: document.getElementById('history-tbody'),
+    historyStats: document.getElementById('history-stats'),
     toastContainer: document.getElementById('toast-container'),
+    
+    // OpenRouter DOM refs
+    orLoading: document.getElementById('or-loading'),
+    orContent: document.getElementById('or-content'),
+    orError: document.getElementById('or-error'),
+    orSummary: document.getElementById('or-summary'),
+    orFixesList: document.getElementById('or-fixes-list'),
+    orDesignList: document.getElementById('or-design-list'),
+    orNarrative: document.getElementById('or-narrative'),
+    
+    // Screenshot refs
+    annotatedScreenshot: document.getElementById('annotated-screenshot'),
+    screenshotPlaceholder: document.getElementById('screenshot-placeholder')
 };
 
 let currentReport = null;
+let currentAuditId = null;
 let currentFilter = 'all';
 
 // ============ Event Listeners ============
@@ -85,7 +106,17 @@ async function runAudit(url) {
 
         const report = await response.json();
         currentReport = report;
+        currentAuditId = report.id || null;
+        
         showResults(report);
+        
+        // Fetch AI Insights in background
+        if (currentAuditId) {
+            fetchOpenRouterInsights(currentAuditId);
+        } else {
+            fetchOpenRouterInsightsPayload(report);
+        }
+        
     } catch (err) {
         showToast(`Audit failed: ${err.message}`, 'error');
         resetUI();
@@ -108,13 +139,116 @@ async function loadDemo(siteId) {
         if (!report) report = DEMO_DATA[siteId];
         if (!report) { showToast('Demo not found', 'error'); resetUI(); return; }
 
+        currentAuditId = null;
         currentReport = normalizeReport(report);
         await sleep(1500);
         showResults(currentReport);
+        
+        // Simulate OpenRouter payload
+        fetchOpenRouterInsightsPayload(currentReport);
     } catch (err) {
         showToast(`Demo failed: ${err.message}`, 'error');
         resetUI();
     }
+}
+
+// ============ OpenRouter AI Insights ============
+
+function resetOpenRouterPanel() {
+    els.orLoading.classList.remove('hidden');
+    els.orContent.classList.add('hidden');
+    els.orError.classList.add('hidden');
+}
+
+async function fetchOpenRouterInsights(auditId) {
+    resetOpenRouterPanel();
+    try {
+        const response = await fetch(`${API_BASE}/api/ai-insights`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ audit_id: auditId })
+        });
+        const data = await response.json();
+        renderOpenRouterInsights(data);
+    } catch (err) {
+        console.error("OpenRouter fetch failed:", err);
+        renderOpenRouterInsights({ available: false });
+    }
+}
+
+async function fetchOpenRouterInsightsPayload(report) {
+    resetOpenRouterPanel();
+    try {
+        const payload = {
+            url: report.url,
+            score: report.overall_score,
+            grade: report.grade,
+            issues: report.issues,
+            categories: report.categories
+        };
+        const response = await fetch(`${API_BASE}/api/ai-insights`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        renderOpenRouterInsights(data);
+    } catch (err) {
+        console.error("OpenRouter fetch failed:", err);
+        renderOpenRouterInsights({ available: false });
+    }
+}
+
+function renderOpenRouterInsights(data) {
+    els.orLoading.classList.add('hidden');
+    
+    if (!data.available) {
+        els.orError.classList.remove('hidden');
+        if (data.reason) els.orError.textContent = `AI insights unavailable: ${data.reason}`;
+        return;
+    }
+    
+    els.orContent.classList.remove('hidden');
+    els.orSummary.textContent = data.summary || '';
+    
+    // Top Fixes
+    if (data.top_fixes && data.top_fixes.length) {
+        els.orFixesList.innerHTML = data.top_fixes.map(fix => `
+            <div class="or-fix-item">
+                <div class="or-fix-header">
+                    <span class="or-fix-title">${esc(fix.title)}</span>
+                    <span class="or-fix-effort">${esc(fix.effort || 'medium')}</span>
+                </div>
+                <div class="or-fix-desc">${esc(fix.description)}</div>
+                ${fix.wcag_criteria ? `<div class="or-fix-wcag">WCAG ${esc(fix.wcag_criteria)}</div>` : ''}
+            </div>
+        `).join('');
+    } else {
+        els.orFixesList.innerHTML = '<div>No priority fixes identified.</div>';
+    }
+    
+    // Design Issues / UX Patterns
+    let designHtml = '';
+    if (data.design_issues && data.design_issues.length) {
+        designHtml += data.design_issues.map(issue => `
+            <div class="or-design-item">
+                <strong>${esc(issue.area || 'Design Issue')}</strong>
+                ${esc(issue.problem)} &mdash; ${esc(issue.fix)}
+            </div>
+        `).join('');
+    }
+    if (data.ux_patterns && data.ux_patterns.length) {
+        designHtml += data.ux_patterns.map(pattern => `
+            <div class="or-design-item">
+                <strong>UX Pattern</strong>
+                ${esc(pattern)}
+            </div>
+        `).join('');
+    }
+    els.orDesignList.innerHTML = designHtml || '<div>No design insights identified.</div>';
+    
+    // Narrative
+    els.orNarrative.textContent = data.ai_narrative || "Keep up the great work improving accessibility!";
 }
 
 // ============ Rendering ============
@@ -132,24 +266,52 @@ function animateSteps() {
     steps.forEach((id, i) => {
         setTimeout(() => {
             const el = document.getElementById(id);
-            el.classList.add('active');
-            if (i > 0) document.getElementById(steps[i-1]).classList.remove('active');
-            if (i > 0) document.getElementById(steps[i-1]).classList.add('done');
+            if (el) el.classList.add('active');
+            if (i > 0) {
+                const prev = document.getElementById(steps[i-1]);
+                if (prev) {
+                    prev.classList.remove('active');
+                    prev.classList.add('done');
+                }
+            }
             els.progressBar.style.width = `${((i+1)/steps.length)*100}%`;
         }, i * 600);
     });
-    setTimeout(() => { document.getElementById(steps[steps.length-1]).classList.add('done'); }, steps.length * 600);
+    setTimeout(() => { 
+        const last = document.getElementById(steps[steps.length-1]);
+        if(last) last.classList.add('done'); 
+    }, steps.length * 600);
 }
 
 function showResults(report) {
     els.progressSection.classList.add('hidden');
     els.resultsSection.classList.remove('hidden');
+    
+    // PDF button
+    if (els.exportPdfBtn) {
+        if (currentAuditId) {
+            els.exportPdfBtn.style.display = 'inline-flex';
+            els.exportPdfBtn.onclick = () => window.open(`${API_BASE}/api/audit/pdf/${currentAuditId}`, '_blank');
+        } else {
+            els.exportPdfBtn.style.display = 'none';
+        }
+    }
+    
+    // Render Annotated Screenshot
+    if (report.screenshot) {
+        els.annotatedScreenshot.src = `data:image/png;base64,${report.screenshot}`;
+        els.annotatedScreenshot.style.display = 'block';
+        els.screenshotPlaceholder.style.display = 'none';
+    } else {
+        els.annotatedScreenshot.style.display = 'none';
+        els.screenshotPlaceholder.style.display = 'block';
+    }
+
     renderScore(report);
     renderStats(report);
     renderCategories(report.categories || []);
     renderIssues(report.issues || []);
-    renderAIInsights(report.dl_insights || report.ai_insights || []);
-    renderLimitations(report.limitations || []);
+    // Visual Model panel removed — skip renderAIInsights
     els.resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -163,8 +325,8 @@ function renderScore(report) {
     const offset = circumference - (score / 100) * circumference;
     setTimeout(() => { els.gaugeFill.style.strokeDashoffset = offset; }, 100);
 
-    // Set gauge color via inline gradient SVG
-    const gaugeColor = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
+    // Set gauge color
+    const gaugeColor = score >= 80 ? 'var(--success)' : score >= 60 ? 'var(--warning)' : 'var(--critical)';
     els.gaugeFill.style.stroke = gaugeColor;
 
     // Grade badge
@@ -212,7 +374,9 @@ function renderIssues(issues) {
                     <span class="issue-card-title">${esc(issue.title)}</span>
                 </div>
                 <span class="wcag-ref">WCAG ${issue.wcag_criterion || ''}</span>
-                <span class="expand-icon">▼</span>
+                <span class="expand-icon">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </span>
             </div>
             <div class="issue-details">
                 <p class="issue-desc">${esc(issue.description || '')}</p>
@@ -223,43 +387,18 @@ function renderIssues(issues) {
 }
 
 function renderAIInsights(insights) {
-    if (!insights || !insights.length) {
-        els.aiInsightsList.innerHTML = '<div class="ai-no-model">No AI model insights available. Train the CNN model and re-run the audit.</div>';
-        els.aiBadge.textContent = 'No Model';
-        return;
-    }
-    els.aiBadge.textContent = 'EfficientNet-B0 CNN';
-    els.aiInsightsList.innerHTML = insights.map(insight => `
-        <div class="ai-insight-card">
-            <div class="ai-insight-header">
-                <span class="ai-insight-title">${esc(insight.title || insight.category)}</span>
-                <div>
-                    <div class="confidence-bar"><div class="confidence-fill" style="width:${(insight.confidence*100)}%"></div></div>
-                    <div class="confidence-text">${(insight.confidence*100).toFixed(0)}% confidence</div>
-                </div>
-            </div>
-            <p class="ai-insight-desc">${esc(insight.description || '')}</p>
-        </div>`).join('');
-}
-
-function renderLimitations(limitations) {
-    if (!limitations || !limitations.length) {
-        limitations = [
-            "AI model trained on synthetic data — may miss real-world edge cases",
-            "Rule-based checks cover ~30-40% of WCAG criteria",
-            "Small dataset (500 samples) limits model generalization",
-            "Dynamic content may not be fully captured",
-        ];
-    }
-    els.limitationsList.innerHTML = limitations.map(l => `<li>${esc(l)}</li>`).join('');
+    // Visual Model panel has been removed from the UI
+    return;
 }
 
 function resetUI() {
     els.resultsSection.classList.add('hidden');
     els.progressSection.classList.add('hidden');
+    if (els.historySection) els.historySection.classList.add('hidden');
     els.hero.classList.remove('hidden');
     els.urlInput.value = '';
     currentReport = null;
+    currentAuditId = null;
     currentFilter = 'all';
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -310,7 +449,7 @@ function normalizeReport(raw) {
     };
 }
 
-// ============ Demo Data (Requirement 9 — Hardcoded Fallback) ============
+// ============ Demo Data ============
 
 const DEMO_DATA = {
     "good-site": {
@@ -368,3 +507,69 @@ const DEMO_DATA = {
         ],
     },
 };
+
+// ============ History Functions ============
+
+if (els.navHistory) {
+    els.navHistory.addEventListener('click', async (e) => {
+        e.preventDefault();
+        els.hero.classList.add('hidden');
+        els.resultsSection.classList.add('hidden');
+        if (els.historySection) {
+            els.historySection.classList.remove('hidden');
+            els.historySection.scrollIntoView({ behavior: 'smooth' });
+            await loadHistory();
+        }
+    });
+}
+
+async function loadHistory() {
+    try {
+        els.historyTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Loading history...</td></tr>';
+        
+        const [histRes, statsRes] = await Promise.all([
+            fetch(`${API_BASE}/api/history`),
+            fetch(`${API_BASE}/api/statistics`)
+        ]);
+        
+        const history = await histRes.json();
+        const stats = await statsRes.json();
+        
+        renderHistoryStats(stats);
+        renderHistoryTable(history);
+    } catch (err) {
+        els.historyTbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--critical);">Failed to load history: ${err.message}</td></tr>`;
+    }
+}
+
+function renderHistoryStats(stats) {
+    if (!els.historyStats) return;
+    els.historyStats.innerHTML = `
+        <div class="h-stat"><span class="h-stat-val">${stats.total_audits || 0}</span><span class="h-stat-lbl">Total Audits</span></div>
+        <div class="h-stat"><span class="h-stat-val">${stats.average_score || 0}</span><span class="h-stat-lbl">Avg Score</span></div>
+    `;
+}
+
+function renderHistoryTable(history) {
+    if (!els.historyTbody) return;
+    if (!history || history.length === 0) {
+        els.historyTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">No audits run yet.</td></tr>';
+        return;
+    }
+    
+    els.historyTbody.innerHTML = history.map(h => {
+        let urlDomain = '';
+        try { urlDomain = new URL(h.url).hostname; } catch(e) { urlDomain = h.url; }
+        return `
+        <tr>
+            <td>${new Date(h.timestamp).toLocaleDateString()}</td>
+            <td><a href="${h.url}" target="_blank" style="color:var(--accent-primary);text-decoration:none;">${urlDomain}</a></td>
+            <td>${Math.round(h.overall_score)}</td>
+            <td class="grade-col grade-${h.grade.toLowerCase()}">${h.grade}</td>
+            <td>${h.total_issues}</td>
+            <td>
+                <button class="view-report-btn" onclick="window.open('${API_BASE}/api/audit/pdf/${h.id}', '_blank')">PDF</button>
+            </td>
+        </tr>
+    `}).join('');
+}

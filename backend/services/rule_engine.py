@@ -196,6 +196,7 @@ class RuleEngine:
                         title="Image Missing Alt Text",
                         description=f"Image '{src_short}' has no alt attribute. Screen readers cannot describe this image to users.",
                         element=f'<img src="{src_short}">',
+                        data_al_id=img.get("data_al_id"),
                         suggestion=f'Add alt="descriptive text" to the <img> tag. If decorative, use alt="" and role="presentation".',
                         score_impact=5.0,
                     ))
@@ -209,6 +210,7 @@ class RuleEngine:
                     title="Excessively Long Alt Text",
                     description=f"Image '{src_short}' has alt text with {len(img['alt'])} characters. Alt text should be concise.",
                     element=f'<img alt="{img["alt"][:50]}...">',
+                    data_al_id=img.get("data_al_id"),
                     suggestion="Keep alt text under 125 characters. Use longdesc or aria-describedby for detailed descriptions.",
                     score_impact=2.0,
                 ))
@@ -269,6 +271,7 @@ class RuleEngine:
                     title=f"Skipped Heading Level (h{prev_level} → h{level})",
                     description=f"Heading jumps from <h{prev_level}> to <h{level}>, skipping level(s). This confuses screen reader navigation.",
                     element=f'<h{level}>{heading["text"][:60]}</h{level}>',
+                    data_al_id=heading.get("data_al_id"),
                     suggestion=f"Use <h{prev_level + 1}> instead, or add the missing intermediate heading level(s).",
                     score_impact=2.0,
                 ))
@@ -285,6 +288,7 @@ class RuleEngine:
                     title=f"Empty Heading (h{heading['level']})",
                     description=f"An <h{heading['level']}> element has no text content.",
                     element=f'<h{heading["level"]}></h{heading["level"]}>',
+                    data_al_id=heading.get("data_al_id"),
                     suggestion="Add descriptive text to the heading, or remove it if not needed.",
                     score_impact=2.0,
                 ))
@@ -308,6 +312,7 @@ class RuleEngine:
                     title="Empty Link",
                     description="A link has no text content and no aria-label. Users cannot determine where this link goes.",
                     element=f'<a href="{link.get("href", "")[:60]}"></a>',
+                    data_al_id=link.get("data_al_id"),
                     suggestion="Add descriptive text inside the <a> tag, or add an aria-label attribute.",
                     score_impact=4.0,
                 ))
@@ -320,6 +325,7 @@ class RuleEngine:
                     title=f'Generic Link Text: "{accessible_name}"',
                     description=f'Link text "{accessible_name}" is too generic. Users (especially screen reader users) cannot determine the link purpose.',
                     element=f'<a href="...">{accessible_name}</a>',
+                    data_al_id=link.get("data_al_id"),
                     suggestion=f'Replace "{accessible_name}" with specific text describing the destination (e.g., "Read our pricing guide").',
                     score_impact=2.0,
                 ))
@@ -339,6 +345,7 @@ class RuleEngine:
                     title=f'Form Input Missing Label ({name})',
                     description=f'A <{inp["tag"]}> element (type="{inp["type"]}") has no associated <label> or aria-label. Screen readers cannot identify this field.',
                     element=f'<{inp["tag"]} type="{inp["type"]}" name="{name}">',
+                    data_al_id=inp.get("data_al_id"),
                     suggestion=f'Add <label for="{inp.get("id", name)}">{name}</label> before the input, or add aria-label="{name}".',
                     score_impact=4.0,
                 ))
@@ -483,6 +490,7 @@ class RuleEngine:
                     title="Iframe Missing Title",
                     description="An <iframe> has no title attribute. Screen readers use the title to describe embedded content.",
                     element=f'<iframe src="{iframe.get("src", "")[:50]}">',
+                    data_al_id=iframe.get("data_al_id"),
                     suggestion='Add a descriptive title attribute: <iframe title="Description of embedded content">.',
                     score_impact=2.0,
                 ))
@@ -501,6 +509,7 @@ class RuleEngine:
                     title="Button Missing Accessible Name",
                     description="A button has no text, value, or aria-label. Screen readers cannot determine the button's purpose.",
                     element=f'<{btn["tag"]} type="{btn.get("type", "")}">',
+                    data_al_id=btn.get("data_al_id"),
                     suggestion="Add text content, a value attribute, or aria-label to the button.",
                     score_impact=4.0,
                 ))

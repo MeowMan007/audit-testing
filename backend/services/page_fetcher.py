@@ -33,6 +33,7 @@ class PageData:
         self.computed_styles: list = []
         self.images: list = []
         self.links: list = []
+        self.element_rects: Dict[str, Dict[str, float]] = {}
         self.success: bool = False
         self.error: Optional[str] = None
 
@@ -130,7 +131,31 @@ class PageFetcher:
             import time
             time.sleep(2)
 
-            # Get rendered HTML
+            # Inject unique IDs and extract bounding boxes for all visible elements
+            try:
+                page_data.element_rects = self._driver.execute_script("""
+                    const rects = {};
+                    let id = 0;
+                    document.querySelectorAll('body *').forEach(el => {
+                        const rect = el.getBoundingClientRect();
+                        if (rect.width > 0 && rect.height > 0) {
+                            const alId = 'al-' + (id++);
+                            el.setAttribute('data-al-id', alId);
+                            rects[alId] = {
+                                x: rect.x + window.scrollX,
+                                y: rect.y + window.scrollY,
+                                w: rect.width,
+                                h: rect.height
+                            };
+                        }
+                    });
+                    return rects;
+                """)
+            except Exception as e:
+                logger.warning(f"Could not extract bounding boxes: {e}")
+                page_data.element_rects = {}
+
+            # Get rendered HTML (now contains data-al-id)
             page_data.html = self._driver.page_source
             page_data.title = self._driver.title
 
