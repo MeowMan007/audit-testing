@@ -105,10 +105,11 @@ class PDFGenerator:
             elements.append(Paragraph("No issues found! Great job.", styles['Success']))
         else:
             for issue in issues:
-                sev = issue.get('severity', '')
-                sev_style = 'Critical' if sev == 'critical' else ('Warning' if sev == 'warning' else 'Normal')
+                sev_val = issue.get('severity', '')
+                sev_str = sev_val.value if hasattr(sev_val, 'value') else str(sev_val)
+                sev_style = 'Critical' if sev_str == 'critical' else ('Warning' if sev_str == 'warning' else 'Normal')
                 
-                elements.append(Paragraph(f"<b>[{sev.upper()}] {issue.get('title', '')}</b>", styles[sev_style]))
+                elements.append(Paragraph(f"<b>[{sev_str.upper()}] {issue.get('title', '')}</b>", styles[sev_style]))
                 elements.append(Paragraph(f"<i>WCAG {issue.get('wcag_criterion', '')}</i>", styles['Normal']))
                 elements.append(Paragraph(f"{issue.get('description', '')}", styles['Normal']))
                 elements.append(Paragraph(f"<b>Suggestion:</b> {issue.get('suggestion', '')}", styles['Normal']))
