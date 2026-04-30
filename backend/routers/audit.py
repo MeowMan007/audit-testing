@@ -22,7 +22,6 @@ from backend.services.report_generator import ReportGenerator
 from backend.services.database import db_service
 from backend.services.pdf_generator import pdf_generator
 from backend.services.hf_api_service import hf_api_service
-from backend.utils.image_annotator import annotate_screenshot
 
 logger = logging.getLogger(__name__)
 
@@ -107,19 +106,12 @@ async def run_audit(request: AuditRequest):
 
         scan_duration = time.time() - start_time
 
-        # Annotate screenshot with bounding boxes
-        annotated_screenshot = annotate_screenshot(
-            page_data.screenshot_b64, 
-            issues, 
-            page_data.element_rects
-        )
-
         # Step 5: Generate report
         report = report_generator.generate(
             url=url,
             issues=issues,
             dl_insights=dl_insights,
-            screenshot_b64=annotated_screenshot,
+            screenshot_b64=page_data.screenshot_b64,
             scan_duration=scan_duration,
             ai_model_used=ai_used,
         )
