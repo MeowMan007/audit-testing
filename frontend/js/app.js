@@ -304,6 +304,19 @@ function showResults(report) {
         els.screenshotPlaceholder.style.display = 'none';
     } else {
         els.annotatedScreenshot.style.display = 'none';
+        
+        let errorReason = "Unknown error";
+        if (report.limitations && report.limitations.length > 0) {
+            const screenLimitation = report.limitations.find(l => l.includes("Screenshot Failed"));
+            if (screenLimitation) {
+                errorReason = screenLimitation;
+            }
+        }
+        
+        els.screenshotPlaceholder.innerHTML = `
+            <div style="color: var(--critical); font-weight: bold; margin-bottom: 0.5rem;">No screenshot available</div>
+            <div style="font-size: 0.85rem; color: var(--text-tertiary);">${errorReason}</div>
+        `;
         els.screenshotPlaceholder.style.display = 'block';
     }
 

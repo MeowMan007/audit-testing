@@ -115,6 +115,10 @@ async def run_audit(request: AuditRequest):
             scan_duration=scan_duration,
             ai_model_used=ai_used,
         )
+        
+        if not page_data.screenshot_b64:
+            error_msg = getattr(page_data, 'error', 'Unknown Error')
+            report.limitations.append(f"⚠️ Screenshot Failed: The headless browser could not capture the page ({error_msg}).")
         report.attention_heatmap = attention_heatmap
 
         # Cache the result
