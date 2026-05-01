@@ -47,6 +47,7 @@ class PageFetcher:
 
     def __init__(self):
         self._driver = None
+        self._last_init_error = None
 
     def _init_selenium(self):
         """Initialize Selenium WebDriver with headless Chrome.
@@ -78,7 +79,23 @@ class PageFetcher:
             logger.info("Selenium WebDriver initialized successfully")
             return True
         except Exception as e:
+            # Fallback to system chromedriver (for Google Colab / Linux)
+            import os
+            if os.path.exists('/usr/bin/chromedriver'):
+                try:
+                    service = Service('/usr/bin/chromedriver')
+                    options.binary_location = '/usr/bin/chromium-browser'
+                    self._driver = webdriver.Chrome(service=service, options=options)
+                    self._driver.set_page_load_timeout(30)
+                    logger.info("Selenium WebDriver initialized via system fallback")
+                    return True
+                except Exception as fallback_e:
+                    logger.warning(f"Selenium init failed: {e}. Fallback failed: {fallback_e}")
+                    self._last_init_error = f"{e} | Fallback: {fallback_e}"
+                    return False
+                    
             logger.warning(f"Selenium init failed: {e}. Will use httpx fallback.")
+            self._last_init_error = str(e)
             return False
 
     async def fetch(self, url: str) -> PageData:
@@ -122,7 +139,12 @@ class PageFetcher:
         """
         try:
             if not self._driver:
-                if not self._init_selenium():
+                try:
+                    if not self._init_selenium():
+                        page_data.error = f"Selenium initialization failed: {self._last_init_error}"
+                        return False
+                except Exception as init_err:
+                    page_data.error = f"Selenium init exception: {init_err}"
                     return False
 
             self._driver.get(url)

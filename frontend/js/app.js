@@ -45,12 +45,10 @@ const els = {
     orSummary: document.getElementById('or-summary'),
     orFixesList: document.getElementById('or-fixes-list'),
     orDesignList: document.getElementById('or-design-list'),
-    orNarrative: document.getElementById('or-narrative'),
-    
-    // Screenshot refs
-    annotatedScreenshot: document.getElementById('annotated-screenshot'),
-    screenshotPlaceholder: document.getElementById('screenshot-placeholder')
+    orNarrative: document.getElementById('or-narrative')
 };
+    
+
 
 let currentReport = null;
 let currentAuditId = null;
@@ -297,28 +295,7 @@ function showResults(report) {
         }
     }
     
-    // Render Annotated Screenshot
-    if (report.screenshot) {
-        els.annotatedScreenshot.src = `data:image/png;base64,${report.screenshot}`;
-        els.annotatedScreenshot.style.display = 'block';
-        els.screenshotPlaceholder.style.display = 'none';
-    } else {
-        els.annotatedScreenshot.style.display = 'none';
-        
-        let errorReason = "Unknown error";
-        if (report.limitations && report.limitations.length > 0) {
-            const screenLimitation = report.limitations.find(l => l.includes("Screenshot Failed"));
-            if (screenLimitation) {
-                errorReason = screenLimitation;
-            }
-        }
-        
-        els.screenshotPlaceholder.innerHTML = `
-            <div style="color: var(--critical); font-weight: bold; margin-bottom: 0.5rem;">No screenshot available</div>
-            <div style="font-size: 0.85rem; color: var(--text-tertiary);">${errorReason}</div>
-        `;
-        els.screenshotPlaceholder.style.display = 'block';
-    }
+
 
     renderScore(report);
     renderStats(report);

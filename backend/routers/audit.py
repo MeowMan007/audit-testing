@@ -22,6 +22,7 @@ from backend.services.report_generator import ReportGenerator
 from backend.services.database import db_service
 from backend.services.pdf_generator import pdf_generator
 from backend.services.hf_api_service import hf_api_service
+from backend.utils.image_annotator import annotate_screenshot
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,15 @@ async def run_audit(request: AuditRequest):
             computed_styles=page_data.computed_styles,
         )
 
+        # Annotate the screenshot with issue bounding boxes
+        annotated_b64 = page_data.screenshot_b64
+        if annotated_b64 and page_data.element_rects:
+            annotated_b64 = annotate_screenshot(
+                annotated_b64, 
+                issues, 
+                page_data.element_rects
+            )
+
         # Step 4: Run AI model (if requested and available)
         dl_insights = []
         attention_heatmap = None
@@ -111,7 +121,7 @@ async def run_audit(request: AuditRequest):
             url=url,
             issues=issues,
             dl_insights=dl_insights,
-            screenshot_b64=page_data.screenshot_b64,
+            screenshot_b64=annotated_b64,
             scan_duration=scan_duration,
             ai_model_used=ai_used,
         )
@@ -547,6 +557,33 @@ DEMO_RESULTS = {
 }
 
 
+def _generate_demo_screenshot(site_id: str) -> str:
+    from PIL import Image, ImageDraw
+    import io
+    import base64
+    
+    img = Image.new('RGB', (1200, 800), color=(240, 240, 240))
+    draw = ImageDraw.Draw(img)
+    
+    colors = {
+        "good-site": (76, 175, 80),
+        "medium-site": (255, 152, 0),
+        "bad-site": (244, 67, 54)
+    }
+    color = colors.get(site_id, (100, 100, 100))
+    
+    draw.rectangle([0, 0, 1200, 60], fill=color)
+    
+    # Add some mock content boxes
+    draw.rectangle([50, 100, 1150, 300], fill=(200, 200, 200))
+    draw.rectangle([50, 350, 550, 700], fill=(200, 200, 200))
+    draw.rectangle([600, 350, 1150, 700], fill=(200, 200, 200))
+    
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+
 @router.get("/demo/{site_id}")
 async def get_demo(site_id: str):
     """Get pre-computed demo audit results (Requirement 9).
@@ -561,4 +598,9 @@ async def get_demo(site_id: str):
             status_code=404,
             detail=f"Demo '{site_id}' not found. Available: {list(DEMO_RESULTS.keys())}"
         )
-    return DEMO_RESULTS[site_id]
+    
+    result = DEMO_RESULTS[site_id].copy()
+    if "screenshot" not in result:
+        result["screenshot"] = _generate_demo_screenshot(site_id)
+        
+    return result
