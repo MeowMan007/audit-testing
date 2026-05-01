@@ -106,6 +106,56 @@ python -m backend.ml.train
 python -m backend.ml.evaluate
 ```
 
+### Hugging Face Token (Required for AI Insights & Dataset)
+1. Go to [Hugging Face](https://huggingface.co/) and create an account or log in.
+2. Go to your **Settings** > **Access Tokens** (or visit [https://huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)).
+3. Click **New token**, give it a name (e.g., "accesslens"), and set the role to **Read**.
+4. Copy the generated token.
+5. Create a `.env` file in the root `nfhds/` directory and add the token:
+   ```env
+   HF_TOKEN=your_hugging_face_token_here
+   ```
+
+### Running on Google Colab (Recommended for GPU Training)
+Since training the ViT-B/16 model requires significant GPU resources, running on Google Colab is highly recommended.
+
+1. Open [Google Colab](https://colab.research.google.com/) and create a new notebook.
+2. Go to **Runtime** > **Change runtime type** and select **T4 GPU** as the hardware accelerator.
+3. Clone the repository and install Python dependencies:
+   ```python
+   !git clone https://github.com/yourusername/nfhds.git # Replace with your repo URL
+   %cd nfhds
+   !pip install -r backend/requirements.txt
+   ```
+4. Install system dependencies for Selenium (Headless Chromium):
+   ```python
+   !apt-get update
+   !apt-get install -y chromium-browser chromium-chromedriver
+   ```
+5. Set your Hugging Face Token as an environment variable:
+   ```python
+   import os
+   os.environ["HF_TOKEN"] = "your_hugging_face_token_here"
+   ```
+6. Run the training script (uses the T4 GPU automatically):
+   ```python
+   !python -m backend.ml.train
+   ```
+7. (Optional) Start the FastAPI backend and expose it using `localtunnel` or `cloudflared` to access the dashboard from the Colab instance:
+   ```python
+   import subprocess
+   import time
+   
+   # Start Uvicorn in the background
+   subprocess.Popen(["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"])
+   time.sleep(3) # Wait for server to start
+   
+   # Expose using localtunnel
+   !npm install -g localtunnel
+   !npx localtunnel --port 8000
+   ```
+   Click the `localtunnel` URL generated in the output to access the AccessLens dashboard!
+
 ---
 
 ## 7. Project Structure
