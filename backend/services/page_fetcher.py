@@ -79,15 +79,25 @@ class PageFetcher:
             logger.info("Selenium WebDriver initialized successfully")
             return True
         except Exception as e:
-            # Fallback to system chromedriver (for Google Colab / Linux)
+            # Fallback to system chromedriver (for Google Colab / Linux / Docker)
             import os
-            if os.path.exists('/usr/bin/chromedriver'):
+            chromedriver_path = None
+            chrome_binary = None
+            for cd in ['/usr/bin/chromedriver', '/usr/lib/chromium/chromedriver']:
+                if os.path.exists(cd):
+                    chromedriver_path = cd
+                    break
+            for cb in ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome']:
+                if os.path.exists(cb):
+                    chrome_binary = cb
+                    break
+            if chromedriver_path and chrome_binary:
                 try:
-                    service = Service('/usr/bin/chromedriver')
-                    options.binary_location = '/usr/bin/chromium-browser'
+                    options.binary_location = chrome_binary
+                    service = Service(chromedriver_path)
                     self._driver = webdriver.Chrome(service=service, options=options)
                     self._driver.set_page_load_timeout(30)
-                    logger.info("Selenium WebDriver initialized via system fallback")
+                    logger.info(f"Selenium WebDriver initialized via system fallback ({chrome_binary})")
                     return True
                 except Exception as fallback_e:
                     logger.warning(f"Selenium init failed: {e}. Fallback failed: {fallback_e}")

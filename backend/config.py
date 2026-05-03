@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     MODEL_PATH: str = "dataset/accessibility_model.pth"
     CONFIDENCE_THRESHOLD: float = 0.4
     
-    # Database
-    DATABASE_PATH: str = "dataset/audit_history.db"
+    # Database (use /app/data in Docker for writable storage)
+    DATABASE_PATH: str = "data/audit_history.db"
     
     # Hugging Face AI Insights
     HF_TOKEN: str = ""

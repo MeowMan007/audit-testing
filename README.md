@@ -1,3 +1,13 @@
+---
+title: AccessLens
+emoji: 🔍
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # 🧠 AccessLens — AI-Powered Accessibility Audit Tool
 
 > **College Project**: Accessibility Audit using Deep Learning  
