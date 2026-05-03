@@ -21,19 +21,20 @@ RUN useradd -m -u 1000 appuser
 
 WORKDIR /app
 
-# Copy requirements first for Docker layer caching
-COPY backend/requirements.txt ./backend/requirements.txt
+# Copy slim requirements for Docker
+COPY requirements-docker.txt ./requirements-docker.txt
 
-# Install Python dependencies (CPU-only PyTorch to save space)
-RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu \
-    -r backend/requirements.txt
+# Install Python deps — CPU-only PyTorch to save ~1GB
+RUN pip install --no-cache-dir \
+    torch==2.2.0+cpu torchvision==0.17.0+cpu \
+    --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir -r requirements-docker.txt
 
 # Copy the rest of the application
 COPY . .
 
 # Create writable directories for the app user
-RUN mkdir -p /app/data /app/dataset && \
-    chown -R appuser:appuser /app
+RUN mkdir -p /app/data && chown -R appuser:appuser /app
 
 USER appuser
 
