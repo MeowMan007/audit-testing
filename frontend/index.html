@@ -123,8 +123,15 @@
                         <span class="step-desc">Checking structural compliance</span>
                     </div>
                 </div>
-                <div class="progress-step" id="step-ai">
+                <div class="progress-step" id="step-reading-order">
                     <div class="step-indicator"><span class="step-num">4</span></div>
+                    <div class="step-info">
+                        <span class="step-name">Reading Order Analysis</span>
+                        <span class="step-desc">Comparing visual vs DOM order</span>
+                    </div>
+                </div>
+                <div class="progress-step" id="step-ai">
+                    <div class="step-indicator"><span class="step-num">5</span></div>
                     <div class="step-info">
                         <span class="step-name">CNN Model Inference</span>
                         <span class="step-desc">ViT-B/16 visual accessibility analysis</span>
@@ -246,7 +253,80 @@
                     </div>
 
 
+                </div>
+            </div>
 
+            <!-- Reading Order Analysis Panel -->
+            <div class="reading-order-panel hidden" id="reading-order-panel">
+                <div class="ro-header">
+                    <h2 class="ro-title">
+                        <span>🔀</span> Reading Order Analysis
+                    </h2>
+                    <div class="ro-badges">
+                        <span class="ro-badge">WCAG 1.3.2</span>
+                        <span class="ro-severity-badge" id="ro-severity-badge">—</span>
+                    </div>
+                </div>
+                
+                <p class="ro-explainer">
+                    Compares the <strong>visual layout order</strong> (what sighted users see) with the 
+                    <strong>DOM source order</strong> (what screen readers follow). A low correlation means 
+                    screen reader users hear content in a different sequence.
+                </p>
+
+                <!-- Correlation Score -->
+                <div class="ro-score-section" id="ro-score-section">
+                    <div class="ro-gauge">
+                        <div class="ro-tau-ring" id="ro-tau-ring">
+                            <svg viewBox="0 0 120 120" class="ro-ring-svg">
+                                <circle class="ro-ring-bg" cx="60" cy="60" r="50" />
+                                <circle class="ro-ring-fill" id="ro-ring-fill" cx="60" cy="60" r="50" />
+                            </svg>
+                            <div class="ro-tau-center">
+                                <span class="ro-tau-value" id="ro-tau-value">—</span>
+                                <span class="ro-tau-label">Kendall's τ</span>
+                            </div>
+                        </div>
+                        <div class="ro-stats">
+                            <div class="ro-stat">
+                                <span class="ro-stat-value" id="ro-elements-count">0</span>
+                                <span class="ro-stat-label">Elements Analyzed</span>
+                            </div>
+                            <div class="ro-stat">
+                                <span class="ro-stat-value" id="ro-mismatch-count">0</span>
+                                <span class="ro-stat-label">Mismatched</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Visual Diagram -->
+                <div class="ro-diagram-container" id="ro-diagram-container">
+                    <div class="ro-diagram-legend">
+                        <span class="ro-legend-item"><span class="ro-dot dom-dot"></span> DOM Order</span>
+                        <span class="ro-legend-item"><span class="ro-dot visual-dot"></span> Visual Order</span>
+                        <span class="ro-legend-item"><span class="ro-dot drift-dot"></span> Mismatch</span>
+                    </div>
+                    <canvas id="ro-canvas" width="600" height="280"></canvas>
+                </div>
+
+                <!-- Mismatch Details Table -->
+                <div class="ro-details" id="ro-details">
+                    <h3 class="ro-details-title">Mismatched Elements</h3>
+                    <div class="ro-table-wrapper">
+                        <table class="ro-table">
+                            <thead>
+                                <tr>
+                                    <th>Element</th>
+                                    <th>Content</th>
+                                    <th>DOM #</th>
+                                    <th>Visual #</th>
+                                    <th>Drift</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ro-tbody"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 

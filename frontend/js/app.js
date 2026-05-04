@@ -260,7 +260,7 @@ function showProgress() {
 }
 
 function animateSteps() {
-    const steps = ['step-fetch', 'step-parse', 'step-rules', 'step-ai'];
+    const steps = ['step-fetch', 'step-parse', 'step-rules', 'step-reading-order', 'step-ai'];
     steps.forEach((id, i) => {
         setTimeout(() => {
             const el = document.getElementById(id);
@@ -301,6 +301,7 @@ function showResults(report) {
     renderStats(report);
     renderCategories(report.categories || []);
     renderIssues(report.issues || []);
+    renderReadingOrder(report.reading_order);
     // Visual Model panel removed — skip renderAIInsights
     els.resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -497,6 +498,196 @@ const DEMO_DATA = {
         ],
     },
 };
+
+// ============ Reading Order Analysis ============
+
+function renderReadingOrder(data) {
+    const panel = document.getElementById('reading-order-panel');
+    if (!panel) return;
+    
+    if (!data || data.total_elements_analyzed === 0) {
+        panel.classList.add('hidden');
+        return;
+    }
+    
+    panel.classList.remove('hidden');
+    
+    // Tau score
+    const tauEl = document.getElementById('ro-tau-value');
+    const tau = data.correlation_score;
+    if (tauEl) tauEl.textContent = tau.toFixed(2);
+    
+    // Animate ring fill
+    const ringFill = document.getElementById('ro-ring-fill');
+    if (ringFill) {
+        const circumference = 2 * Math.PI * 50;
+        ringFill.style.strokeDasharray = circumference;
+        const normalizedTau = Math.max(0, (tau + 1) / 2); // Map [-1,1] to [0,1]
+        const offset = circumference - normalizedTau * circumference;
+        setTimeout(() => { ringFill.style.strokeDashoffset = offset; }, 200);
+        
+        // Color based on severity
+        const color = data.severity === 'pass' ? '#4caf50' 
+                    : data.severity === 'warning' ? '#ff9800' 
+                    : '#f44336';
+        ringFill.style.stroke = color;
+    }
+    
+    // Stats
+    const elemCount = document.getElementById('ro-elements-count');
+    const mismatchCount = document.getElementById('ro-mismatch-count');
+    if (elemCount) elemCount.textContent = data.total_elements_analyzed;
+    if (mismatchCount) mismatchCount.textContent = data.mismatch_count;
+    
+    // Severity badge
+    const badge = document.getElementById('ro-severity-badge');
+    if (badge) {
+        const labels = { pass: '✓ Pass', warning: '⚠ Warning', critical: '✗ Critical' };
+        badge.textContent = labels[data.severity] || data.severity;
+        badge.className = `ro-severity-badge ro-sev-${data.severity}`;
+    }
+    
+    // Draw canvas diagram
+    drawReadingOrderDiagram(data.visual_order_map || []);
+    
+    // Mismatch table
+    const tbody = document.getElementById('ro-tbody');
+    const detailsDiv = document.getElementById('ro-details');
+    if (tbody && data.mismatched_elements && data.mismatched_elements.length > 0) {
+        if (detailsDiv) detailsDiv.style.display = 'block';
+        tbody.innerHTML = data.mismatched_elements.map(el => {
+            const driftColor = el.drift >= 10 ? '#f44336' : el.drift >= 5 ? '#ff9800' : '#4caf50';
+            return `
+                <tr>
+                    <td><code>&lt;${esc(el.tag)}&gt;</code></td>
+                    <td class="ro-text-cell">${esc(el.text || '—')}</td>
+                    <td class="ro-num">${el.dom_rank}</td>
+                    <td class="ro-num">${el.visual_rank}</td>
+                    <td class="ro-num" style="color:${driftColor};font-weight:700;">±${el.drift}</td>
+                </tr>
+            `;
+        }).join('');
+    } else {
+        if (detailsDiv) detailsDiv.style.display = data.severity === 'pass' ? 'none' : 'block';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">No significant mismatches detected.</td></tr>';
+    }
+}
+
+function drawReadingOrderDiagram(elements) {
+    const canvas = document.getElementById('ro-canvas');
+    if (!canvas || !elements.length) return;
+    
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+    
+    const W = rect.width;
+    const H = rect.height;
+    
+    ctx.clearRect(0, 0, W, H);
+    
+    // Background
+    ctx.fillStyle = '#0d1117';
+    ctx.roundRect(0, 0, W, H, 8);
+    ctx.fill();
+    
+    // Take top 20 elements for readability
+    const subset = elements.slice(0, 20);
+    const n = subset.length;
+    if (n === 0) return;
+    
+    const padding = 40;
+    const usableW = W - padding * 2;
+    const usableH = H - padding * 2;
+    const cols = Math.ceil(Math.sqrt(n * (usableW / usableH)));
+    const rows = Math.ceil(n / cols);
+    const cellW = usableW / cols;
+    const cellH = usableH / rows;
+    
+    // Position elements in a grid by their visual order
+    const positions = [];
+    for (let i = 0; i < n; i++) {
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        positions.push({
+            x: padding + col * cellW + cellW / 2,
+            y: padding + row * cellH + cellH / 2,
+        });
+    }
+    
+    // Draw connection lines for mismatched elements
+    subset.forEach((el, i) => {
+        const drift = el.drift || 0;
+        if (drift >= 5) {
+            const visualIdx = el.visual_rank - 1;
+            const domIdx = el.dom_rank - 1;
+            if (visualIdx < n && domIdx < n) {
+                const from = positions[Math.min(visualIdx, n - 1)];
+                const to = positions[Math.min(domIdx, n - 1)];
+                ctx.beginPath();
+                ctx.moveTo(from.x, from.y);
+                ctx.lineTo(to.x, to.y);
+                ctx.strokeStyle = 'rgba(244, 67, 54, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([4, 4]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+    });
+    
+    // Draw element circles
+    subset.forEach((el, i) => {
+        const pos = positions[i];
+        const drift = el.drift || 0;
+        const radius = 16;
+        
+        // Circle fill
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+        if (drift >= 10) {
+            ctx.fillStyle = 'rgba(244, 67, 54, 0.8)';
+        } else if (drift >= 5) {
+            ctx.fillStyle = 'rgba(255, 152, 0, 0.8)';
+        } else {
+            ctx.fillStyle = 'rgba(76, 175, 80, 0.7)';
+        }
+        ctx.fill();
+        
+        // Border
+        ctx.strokeStyle = drift >= 5 ? '#fff' : 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = drift >= 5 ? 2 : 1;
+        ctx.stroke();
+        
+        // DOM order number inside
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 11px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(el.dom_rank.toString(), pos.x, pos.y);
+        
+        // Visual order number (small, above) if mismatched
+        if (drift >= 5) {
+            ctx.fillStyle = '#ff9800';
+            ctx.font = '9px Inter, sans-serif';
+            ctx.fillText(`v${el.visual_rank}`, pos.x, pos.y - radius - 6);
+        }
+        
+        // Tag label below
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.font = '9px Inter, sans-serif';
+        ctx.fillText(`<${el.tag}>`, pos.x, pos.y + radius + 10);
+    });
+    
+    // Title
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = '10px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('DOM order numbers shown • Orange = visual order differs', padding, H - 8);
+}
 
 // ============ History Functions ============
 

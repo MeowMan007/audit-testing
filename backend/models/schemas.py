@@ -107,6 +107,7 @@ class AuditReport(BaseModel):
     categories: List[CategoryScore] = Field(default_factory=list)
     screenshot: Optional[str] = Field(None, description="Base64 encoded screenshot")
     attention_heatmap: Optional[str] = Field(None, description="Base64 encoded Grad-CAM heatmap")
+    reading_order: Optional[dict] = Field(None, description="Reading order analysis results")
     scan_duration: float = Field(0, description="Audit duration in seconds")
     ai_model_used: bool = Field(False, description="Whether AI model was used")
     limitations: List[str] = Field(

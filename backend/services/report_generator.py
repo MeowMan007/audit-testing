@@ -51,6 +51,7 @@ class ReportGenerator:
         screenshot_b64: str = None,
         scan_duration: float = 0.0,
         ai_model_used: bool = False,
+        reading_order: dict = None,
     ) -> AuditReport:
         """Generate the final audit report.
         
@@ -61,6 +62,7 @@ class ReportGenerator:
             screenshot_b64: Base64 screenshot (included in report)
             scan_duration: Total audit duration in seconds
             ai_model_used: Whether the CNN model was used
+            reading_order: Reading order analysis results dict
             
         Returns:
             Complete AuditReport with score, grade, categories, and all findings
@@ -92,6 +94,7 @@ class ReportGenerator:
             dl_insights=dl_insights,
             categories=categories,
             screenshot=screenshot_b64,
+            reading_order=reading_order,
             scan_duration=round(scan_duration, 2),
             ai_model_used=ai_model_used,
         )

@@ -18,6 +18,7 @@ from backend.services.page_fetcher import PageFetcher
 from backend.services.dom_analyzer import DOMAnalyzer
 from backend.services.rule_engine import RuleEngine
 from backend.services.dl_engine import DLEngine
+from backend.services.reading_order import ReadingOrderAnalyzer
 from backend.services.report_generator import ReportGenerator
 from backend.services.database import db_service
 from backend.services.pdf_generator import pdf_generator
@@ -35,6 +36,7 @@ page_fetcher = PageFetcher()
 dom_analyzer = DOMAnalyzer()
 rule_engine = RuleEngine()
 dl_engine = DLEngine()
+reading_order_analyzer = ReadingOrderAnalyzer()
 report_generator = ReportGenerator()
 
 # Simple in-memory cache
@@ -103,12 +105,24 @@ async def run_audit(request: AuditRequest):
                 page_data.element_rects
             )
 
+        # Step 3.5: Reading Order Analysis (novel feature)
+        reading_order_result = None
+        if page_data.element_rects and page_data.html:
+            logger.info("  Step 3.5/5: Analyzing reading order...")
+            ro_result = reading_order_analyzer.analyze(
+                element_rects=page_data.element_rects,
+                html=page_data.html,
+            )
+            reading_order_result = ro_result.to_dict()
+            # Add reading order issues to the main issues list
+            issues.extend(ro_result.issues)
+
         # Step 4: Run AI model (if requested and available)
         dl_insights = []
         attention_heatmap = None
         ai_used = False
         if request.include_ai and page_data.screenshot_b64:
-            logger.info("  Step 4/4: Running CNN analysis...")
+            logger.info("  Step 4/5: Running CNN analysis...")
             dl_insights, attention_heatmap = await dl_engine.analyze_with_explanation(
                 screenshot_b64=page_data.screenshot_b64,
             )
@@ -124,6 +138,7 @@ async def run_audit(request: AuditRequest):
             screenshot_b64=annotated_b64,
             scan_duration=scan_duration,
             ai_model_used=ai_used,
+            reading_order=reading_order_result,
         )
         
         if not page_data.screenshot_b64:
