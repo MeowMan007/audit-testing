@@ -19,6 +19,7 @@ from backend.services.dom_analyzer import DOMAnalyzer
 from backend.services.rule_engine import RuleEngine
 from backend.services.dl_engine import DLEngine
 from backend.services.reading_order import ReadingOrderAnalyzer
+from backend.services.focus_analyzer import FocusAnalyzer
 from backend.services.report_generator import ReportGenerator
 from backend.services.database import db_service
 from backend.services.pdf_generator import pdf_generator
@@ -37,6 +38,7 @@ dom_analyzer = DOMAnalyzer()
 rule_engine = RuleEngine()
 dl_engine = DLEngine()
 reading_order_analyzer = ReadingOrderAnalyzer()
+focus_analyzer = FocusAnalyzer()
 report_generator = ReportGenerator()
 
 # Simple in-memory cache
@@ -121,12 +123,25 @@ async def run_audit(request: AuditRequest):
             if annotated_b64 and ro_result.visual_order_map:
                 annotated_b64 = annotate_reading_order(annotated_b64, ro_result.visual_order_map)
 
+        # Step 3.6: Focus Trap & Keyboard Reachability (novel feature)
+        focus_trap_result = None
+        if page_data.focus_path and page_data.expected_focusable_ids:
+            logger.info("  Step 3.6/6: Analyzing keyboard navigation...")
+            ft_result = focus_analyzer.analyze(
+                focus_path=page_data.focus_path,
+                expected_focusable=page_data.expected_focusable_ids,
+                element_rects=page_data.element_rects,
+                html=page_data.html,
+            )
+            focus_trap_result = ft_result.to_dict()
+            issues.extend(ft_result.issues)
+
         # Step 4: Run AI model (if requested and available)
         dl_insights = []
         attention_heatmap = None
         ai_used = False
         if request.include_ai and page_data.screenshot_b64:
-            logger.info("  Step 4/5: Running CNN analysis...")
+            logger.info("  Step 4/6: Running CNN analysis...")
             dl_insights, attention_heatmap = await dl_engine.analyze_with_explanation(
                 screenshot_b64=page_data.screenshot_b64,
             )
@@ -143,6 +158,7 @@ async def run_audit(request: AuditRequest):
             scan_duration=scan_duration,
             ai_model_used=ai_used,
             reading_order=reading_order_result,
+            focus_trap=focus_trap_result,
         )
         
         if not page_data.screenshot_b64:
@@ -317,6 +333,18 @@ DEMO_RESULTS = {
                 {"al_id": "al-9", "tag": "footer", "text": "Crown copyright", "dom_rank": 10, "visual_rank": 10, "drift": 0, "bbox": {"x": 0, "y": 700, "w": 960, "h": 60}},
             ],
         },
+        "focus_trap": {
+            "has_trap": False,
+            "trap_cycle": [],
+            "trap_cycle_tags": [],
+            "unreachable": [],
+            "unreachable_details": [],
+            "total_focusable": 12,
+            "total_reached": 12,
+            "reachability_pct": 100.0,
+            "focus_path_length": 14,
+            "focus_path_summary": ["al-3", "al-4", "al-5", "al-6", "al-7", "al-8", "al-9", "al-10", "al-11", "al-12"],
+        },
         "issues": [
             {
                 "title": "Generic Link Text: \"more\"",
@@ -393,6 +421,28 @@ DEMO_RESULTS = {
                 {"al_id": "al-10", "tag": "p", "text": "Trusted by thousands", "dom_rank": 11, "visual_rank": 11, "drift": 0, "bbox": {"x": 50, "y": 560, "w": 300, "h": 24}},
                 {"al_id": "al-6", "tag": "h2", "text": "Our Services", "dom_rank": 7, "visual_rank": 12, "drift": 5, "bbox": {"x": 50, "y": 580, "w": 300, "h": 36}},
             ],
+        },
+        "focus_trap": {
+            "has_trap": True,
+            "trap_cycle": ["al-7", "al-8", "al-9"],
+            "trap_cycle_tags": [
+                {"al_id": "al-7", "tag": "input", "text": "Email address", "type": "email"},
+                {"al_id": "al-8", "tag": "input", "text": "Phone number", "type": "tel"},
+                {"al_id": "al-9", "tag": "button", "text": "Submit", "type": "submit"},
+            ],
+            "unreachable": ["al-10", "al-11", "al-13", "al-14", "al-15", "al-16", "al-17"],
+            "unreachable_details": [
+                {"al_id": "al-10", "tag": "a", "text": "Privacy Policy"},
+                {"al_id": "al-11", "tag": "a", "text": "Terms of Service"},
+                {"al_id": "al-13", "tag": "button", "text": "Cookie Settings"},
+                {"al_id": "al-14", "tag": "a", "text": "Contact Us"},
+                {"al_id": "al-15", "tag": "a", "text": "Sign up now!"},
+            ],
+            "total_focusable": 14,
+            "total_reached": 7,
+            "reachability_pct": 50.0,
+            "focus_path_length": 42,
+            "focus_path_summary": ["al-0", "al-1", "al-3", "al-4", "al-5", "al-6", "al-7", "al-8", "al-9", "al-7", "al-8", "al-9"],
         },
         "warning_count": 6,
         "issues": [
@@ -560,6 +610,21 @@ DEMO_RESULTS = {
                 {"al_id": "al-14", "tag": "input", "text": "Your email", "dom_rank": 15, "visual_rank": 10, "drift": 5, "bbox": {"x": 250, "y": 460, "w": 300, "h": 40}},
                 {"al_id": "al-9", "tag": "footer", "text": "2026 StartupCo", "dom_rank": 10, "visual_rank": 11, "drift": 1, "bbox": {"x": 0, "y": 600, "w": 960, "h": 60}},
             ],
+        },
+        "focus_trap": {
+            "has_trap": False,
+            "trap_cycle": [],
+            "trap_cycle_tags": [],
+            "unreachable": ["al-13", "al-15"],
+            "unreachable_details": [
+                {"al_id": "al-13", "tag": "a", "text": "Careers"},
+                {"al_id": "al-15", "tag": "button", "text": "Dark Mode Toggle"},
+            ],
+            "total_focusable": 10,
+            "total_reached": 8,
+            "reachability_pct": 80.0,
+            "focus_path_length": 12,
+            "focus_path_summary": ["al-0", "al-1", "al-2", "al-3", "al-4", "al-11", "al-14", "al-9"],
         },
         "warning_count": 5,
         "issues": [

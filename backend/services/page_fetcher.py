@@ -36,6 +36,7 @@ class PageData:
         self.element_rects: Dict[str, Dict[str, float]] = {}
         self.focus_path: list = []
         self.focusable_count: int = 0
+        self.expected_focusable_ids: list = []  # data-al-id values for focusable elements
         self.success: bool = False
         self.error: Optional[str] = None
 
@@ -252,6 +253,9 @@ class PageFetcher:
             except Exception:
                 page_data.links = []
 
+            # Step 6: Keyboard focus navigation simulation (novel feature)
+            self._simulate_keyboard_navigation(page_data)
+
             page_data.success = True
             logger.info(f"Successfully fetched {url} with Selenium")
             return True
@@ -260,6 +264,98 @@ class PageFetcher:
             logger.error(f"Selenium fetch failed for {url}: {e}")
             page_data.error = str(e)
             return False
+
+    def _simulate_keyboard_navigation(self, page_data: PageData):
+        """Simulate keyboard Tab navigation to detect focus traps.
+        
+        NOVEL: No other accessibility tool does this because they run
+        inside the browser. Selenium is an external orchestrator that
+        can send real Tab keystrokes and observe focus changes.
+        
+        Algorithm:
+        1. Discover all theoretically focusable elements
+        2. Click body to reset focus
+        3. Send Tab keys, recording activeElement after each
+        4. Stop when focus cycles back to start or hits safety limit
+        """
+        MAX_TABS = 200  # Safety limit for huge pages
+        
+        try:
+            from selenium.webdriver.common.keys import Keys
+            from selenium.webdriver.common.action_chains import ActionChains
+            
+            # Step 1: Discover expected focusable elements
+            expected = self._driver.execute_script("""
+                const focusable = document.querySelectorAll(
+                    'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), ' +
+                    'select:not([disabled]), textarea:not([disabled]), ' +
+                    '[tabindex]:not([tabindex="-1"]), [contenteditable="true"]'
+                );
+                const ids = [];
+                focusable.forEach(el => {
+                    const alId = el.getAttribute('data-al-id');
+                    if (alId) ids.push(alId);
+                });
+                return ids;
+            """)
+            
+            page_data.expected_focusable_ids = expected or []
+            page_data.focusable_count = len(page_data.expected_focusable_ids)
+            
+            if page_data.focusable_count < 2:
+                logger.info(f"Too few focusable elements ({page_data.focusable_count}), skipping keyboard sim")
+                return
+            
+            # Step 2: Reset focus to body
+            self._driver.execute_script("document.body.focus();")
+            import time
+            time.sleep(0.1)
+            
+            # Step 3: Send Tab keys and record focus path
+            focus_path = []
+            first_focusable = None
+            actions = ActionChains(self._driver)
+            
+            for i in range(MAX_TABS):
+                actions.send_keys(Keys.TAB).perform()
+                actions = ActionChains(self._driver)  # Reset chain
+                
+                # Capture current activeElement
+                active_id = self._driver.execute_script("""
+                    const el = document.activeElement;
+                    if (!el || el === document.body) return 'body';
+                    return el.getAttribute('data-al-id') || 'unknown';
+                """)
+                
+                focus_path.append(active_id)
+                
+                # Track first real focusable element
+                if first_focusable is None and active_id not in ('body', 'unknown', 'null'):
+                    first_focusable = active_id
+                
+                # Stop if we've cycled back to the first element after visiting others
+                if (first_focusable and active_id == first_focusable 
+                        and len(focus_path) > page_data.focusable_count):
+                    logger.info(f"Focus cycle complete after {i+1} tabs")
+                    break
+                
+                # Stop if focus is stuck on body for multiple consecutive tabs
+                if len(focus_path) >= 5 and all(p == 'body' for p in focus_path[-5:]):
+                    logger.info("Focus stuck on body, stopping keyboard sim")
+                    break
+            
+            page_data.focus_path = focus_path
+            logger.info(
+                f"Keyboard simulation: {len(focus_path)} tabs, "
+                f"{len(set(focus_path) - {'body', 'unknown', 'null'})} unique elements reached, "
+                f"{page_data.focusable_count} expected focusable"
+            )
+            
+        except Exception as e:
+            logger.warning(f"Keyboard navigation simulation failed (non-fatal): {e}")
+            # Don't fail the whole audit — this is an enhancement
+            page_data.focus_path = []
+            page_data.expected_focusable_ids = []
 
     async def _fetch_with_httpx(self, url: str, page_data: PageData):
         """Fallback: Fetch raw HTML using httpx (no JS rendering, no screenshot).

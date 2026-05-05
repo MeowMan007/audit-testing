@@ -130,8 +130,15 @@
                         <span class="step-desc">Comparing visual vs DOM order</span>
                     </div>
                 </div>
-                <div class="progress-step" id="step-ai">
+                <div class="progress-step" id="step-focus-trap">
                     <div class="step-indicator"><span class="step-num">5</span></div>
+                    <div class="step-info">
+                        <span class="step-name">Keyboard Trap Detection</span>
+                        <span class="step-desc">Simulating Tab key navigation</span>
+                    </div>
+                </div>
+                <div class="progress-step" id="step-ai">
+                    <div class="step-indicator"><span class="step-num">6</span></div>
                     <div class="step-info">
                         <span class="step-name">CNN Model Inference</span>
                         <span class="step-desc">ViT-B/16 visual accessibility analysis</span>
@@ -195,7 +202,12 @@
                 <!-- Left Column: Issues -->
                 <div class="issues-panel" id="issues-panel">
                     <div class="issues-header">
-                        <h2 class="issues-title">Found Issues</h2>
+                        <div class="issues-title-group" style="display: flex; align-items: center; gap: 12px;">
+                            <h2 class="issues-title">Found Issues</h2>
+                            <button id="issues-toggle-btn" class="issues-toggle-btn" aria-expanded="true" aria-controls="issues-list" title="Collapse Issues">
+                                <span class="toggle-icon">▼</span>
+                            </button>
+                        </div>
                         <div class="issues-controls">
                             <div class="filter-tabs" id="filter-tabs" role="tablist" aria-label="Filter issues by severity">
                                 <button class="filter-tab active" data-filter="all" role="tab" aria-selected="true" id="tab-all">All</button>
@@ -341,6 +353,98 @@
                 </div>
             </div>
 
+            <!-- Focus Trap & Keyboard Reachability Panel -->
+            <div class="focus-trap-panel hidden" id="focus-trap-panel">
+                <div class="ft-header">
+                    <h2 class="ft-title">
+                        <span>⌨️</span> Keyboard Trap Detection
+                    </h2>
+                    <div class="ft-badges">
+                        <span class="ft-badge">WCAG 2.1.1</span>
+                        <span class="ft-badge">WCAG 2.1.2</span>
+                        <span class="ft-status-badge" id="ft-status-badge">—</span>
+                    </div>
+                </div>
+                
+                <p class="ft-explainer">
+                    Simulates <strong>Tab key navigation</strong> through the entire page using Selenium 
+                    to detect keyboard traps and unreachable interactive elements — a check that 
+                    <strong>no other accessibility tool</strong> (Lighthouse, WAVE, axe-core) can perform.
+                </p>
+
+                <!-- Reachability Score -->
+                <div class="ft-score-section" id="ft-score-section">
+                    <div class="ft-gauge">
+                        <div class="ft-reach-ring" id="ft-reach-ring">
+                            <svg viewBox="0 0 120 120" class="ft-ring-svg">
+                                <circle class="ft-ring-bg" cx="60" cy="60" r="50" />
+                                <circle class="ft-ring-fill" id="ft-ring-fill" cx="60" cy="60" r="50" />
+                            </svg>
+                            <div class="ft-reach-center">
+                                <span class="ft-reach-value" id="ft-reach-value">—</span>
+                                <span class="ft-reach-label">Reachable</span>
+                            </div>
+                        </div>
+                        <div class="ft-stats">
+                            <div class="ft-stat">
+                                <span class="ft-stat-value" id="ft-focusable-count">0</span>
+                                <span class="ft-stat-label">Focusable Elements</span>
+                            </div>
+                            <div class="ft-stat">
+                                <span class="ft-stat-value" id="ft-reached-count">0</span>
+                                <span class="ft-stat-label">Reached via Tab</span>
+                            </div>
+                            <div class="ft-stat">
+                                <span class="ft-stat-value" id="ft-tabs-count">0</span>
+                                <span class="ft-stat-label">Tab Presses</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trap Alert (shown only when trap detected) -->
+                <div class="ft-trap-alert hidden" id="ft-trap-alert">
+                    <div class="ft-trap-icon">🚫</div>
+                    <div class="ft-trap-info">
+                        <h3 class="ft-trap-title">Keyboard Trap Detected!</h3>
+                        <p class="ft-trap-desc" id="ft-trap-desc">Focus is trapped in a cycle of elements and cannot reach the rest of the page.</p>
+                    </div>
+                </div>
+
+                <!-- Trapped Cycle Elements -->
+                <div class="ft-cycle-section hidden" id="ft-cycle-section">
+                    <h3 class="ft-section-title">Trapped Cycle</h3>
+                    <div class="ft-cycle-path" id="ft-cycle-path"></div>
+                </div>
+
+                <!-- Focus Graph Canvas -->
+                <div class="ft-graph-container" id="ft-graph-container">
+                    <div class="ft-graph-legend">
+                        <span class="ft-legend-item"><span class="ft-dot reached-dot"></span> Reached</span>
+                        <span class="ft-legend-item"><span class="ft-dot trapped-dot"></span> Trapped</span>
+                        <span class="ft-legend-item"><span class="ft-dot unreachable-dot"></span> Unreachable</span>
+                    </div>
+                    <canvas id="ft-canvas" width="600" height="280"></canvas>
+                </div>
+
+                <!-- Unreachable Elements Table -->
+                <div class="ft-unreachable-section hidden" id="ft-unreachable-section">
+                    <h3 class="ft-section-title">Unreachable Elements</h3>
+                    <div class="ft-table-wrapper">
+                        <table class="ft-table">
+                            <thead>
+                                <tr>
+                                    <th>Element</th>
+                                    <th>Content</th>
+                                    <th>Type</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ft-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
             <!-- New Audit / Export Buttons -->
             <div class="new-audit-section">
                 <button class="export-pdf-btn" id="export-pdf-btn">
@@ -440,9 +544,10 @@
                 <div class="limitation-card" id="limit-rules">
                     <div class="limitation-icon">📋</div>
                     <h3>Rule-Based Coverage</h3>
-                    <p>Automated rule checks combined with AI visual analysis cover approximately 70% of WCAG 2.1 criteria. 
-                       Remaining accessibility issues (like keyboard trap detection, cognitive load, 
-                       or screen reader compatibility) require manual expert testing.</p>
+                    <p>Automated rule checks, keyboard navigation simulation, and AI visual analysis 
+                       cover approximately 75% of WCAG 2.1 criteria. 
+                       Remaining accessibility issues (like cognitive load assessment 
+                       or full screen reader compatibility) require manual expert testing.</p>
                 </div>
                 <div class="limitation-card" id="limit-dynamic">
                     <div class="limitation-icon">⚡</div>

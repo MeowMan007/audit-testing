@@ -52,6 +52,7 @@ class ReportGenerator:
         scan_duration: float = 0.0,
         ai_model_used: bool = False,
         reading_order: dict = None,
+        focus_trap: dict = None,
     ) -> AuditReport:
         """Generate the final audit report.
         
@@ -63,6 +64,7 @@ class ReportGenerator:
             scan_duration: Total audit duration in seconds
             ai_model_used: Whether the CNN model was used
             reading_order: Reading order analysis results dict
+            focus_trap: Focus trap & keyboard reachability results dict
             
         Returns:
             Complete AuditReport with score, grade, categories, and all findings
@@ -95,6 +97,7 @@ class ReportGenerator:
             categories=categories,
             screenshot=screenshot_b64,
             reading_order=reading_order,
+            focus_trap=focus_trap,
             scan_duration=round(scan_duration, 2),
             ai_model_used=ai_model_used,
         )

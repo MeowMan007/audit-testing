@@ -23,6 +23,7 @@ const els = {
     statDuration: document.getElementById('stat-duration'),
     categoriesGrid: document.getElementById('categories-grid'),
     issuesList: document.getElementById('issues-list'),
+    issuesToggleBtn: document.getElementById('issues-toggle-btn'),
     filterTabs: document.getElementById('filter-tabs'),
     issueSearch: document.getElementById('issue-search'),
     aiInsightsList: document.getElementById('ai-insights-list'),
@@ -82,6 +83,15 @@ els.issueSearch.addEventListener('input', () => {
 });
 
 els.newAuditBtn.addEventListener('click', resetUI);
+
+if (els.issuesToggleBtn) {
+    els.issuesToggleBtn.addEventListener('click', () => {
+        const isCollapsed = els.issuesList.classList.toggle('collapsed');
+        els.issuesToggleBtn.classList.toggle('collapsed', isCollapsed);
+        els.issuesToggleBtn.setAttribute('aria-expanded', !isCollapsed);
+        els.issuesToggleBtn.title = isCollapsed ? 'Expand Issues' : 'Collapse Issues';
+    });
+}
 
 // ============ Audit Pipeline ============
 
@@ -260,7 +270,7 @@ function showProgress() {
 }
 
 function animateSteps() {
-    const steps = ['step-fetch', 'step-parse', 'step-rules', 'step-reading-order', 'step-ai'];
+    const steps = ['step-fetch', 'step-parse', 'step-rules', 'step-reading-order', 'step-focus-trap', 'step-ai'];
     steps.forEach((id, i) => {
         setTimeout(() => {
             const el = document.getElementById(id);
@@ -303,6 +313,7 @@ function showResults(report) {
     renderIssues(report.issues || []);
     renderScreenshot(report);
     renderReadingOrder(report.reading_order);
+    renderFocusTrap(report.focus_trap);
     // Visual Model panel removed — skip renderAIInsights
     els.resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -703,6 +714,308 @@ function drawReadingOrderDiagram(elements) {
     ctx.font = '10px Inter, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText('DOM order numbers shown • Orange = visual order differs', padding, H - 8);
+}
+
+// ============ Focus Trap & Keyboard Reachability ============
+
+function renderFocusTrap(data) {
+    const panel = document.getElementById('focus-trap-panel');
+    if (!panel) return;
+    
+    if (!data || data.total_focusable === 0) {
+        panel.classList.add('hidden');
+        return;
+    }
+    
+    panel.classList.remove('hidden');
+    
+    // Reachability percentage
+    const reachEl = document.getElementById('ft-reach-value');
+    const pct = data.reachability_pct;
+    if (reachEl) reachEl.textContent = `${Math.round(pct)}%`;
+    
+    // Animate ring fill
+    const ringFill = document.getElementById('ft-ring-fill');
+    if (ringFill) {
+        const circumference = 2 * Math.PI * 50;
+        ringFill.style.strokeDasharray = circumference;
+        const offset = circumference - (pct / 100) * circumference;
+        setTimeout(() => { ringFill.style.strokeDashoffset = offset; }, 200);
+        
+        // Color based on reachability
+        const color = pct >= 95 ? '#4caf50' 
+                    : pct >= 80 ? '#ff9800' 
+                    : '#f44336';
+        ringFill.style.stroke = color;
+    }
+    
+    // Stats
+    const focusableCount = document.getElementById('ft-focusable-count');
+    const reachedCount = document.getElementById('ft-reached-count');
+    const tabsCount = document.getElementById('ft-tabs-count');
+    if (focusableCount) focusableCount.textContent = data.total_focusable;
+    if (reachedCount) reachedCount.textContent = data.total_reached;
+    if (tabsCount) tabsCount.textContent = data.focus_path_length;
+    
+    // Status badge
+    const badge = document.getElementById('ft-status-badge');
+    if (badge) {
+        if (data.has_trap) {
+            badge.textContent = '✗ TRAP DETECTED';
+            badge.className = 'ft-status-badge ft-status-trap';
+        } else if (pct >= 95) {
+            badge.textContent = '✓ No Traps';
+            badge.className = 'ft-status-badge ft-status-pass';
+        } else {
+            badge.textContent = '⚠ Partial Reach';
+            badge.className = 'ft-status-badge ft-status-warn';
+        }
+    }
+    
+    // Trap alert
+    const trapAlert = document.getElementById('ft-trap-alert');
+    const trapDesc = document.getElementById('ft-trap-desc');
+    if (trapAlert) {
+        if (data.has_trap) {
+            trapAlert.classList.remove('hidden');
+            if (trapDesc) {
+                const cycleNames = (data.trap_cycle_tags || []).map(
+                    t => `<${t.tag}>${t.text ? ' "' + t.text + '"' : ''}`
+                ).join(' → ');
+                trapDesc.textContent = `Focus is trapped in a cycle: ${cycleNames}. ` +
+                    `${data.unreachable.length} interactive elements are completely unreachable by keyboard.`;
+            }
+        } else {
+            trapAlert.classList.add('hidden');
+        }
+    }
+    
+    // Trapped cycle visualization
+    const cycleSection = document.getElementById('ft-cycle-section');
+    const cyclePath = document.getElementById('ft-cycle-path');
+    if (cycleSection && cyclePath) {
+        if (data.has_trap && data.trap_cycle_tags && data.trap_cycle_tags.length > 0) {
+            cycleSection.classList.remove('hidden');
+            cyclePath.innerHTML = data.trap_cycle_tags.map((t, i) => {
+                const arrow = i < data.trap_cycle_tags.length - 1 ? '<span class="ft-cycle-arrow">→</span>' : '<span class="ft-cycle-arrow">↻</span>';
+                return `<span class="ft-cycle-node ft-cycle-trapped">
+                    <code>&lt;${esc(t.tag)}&gt;</code>
+                    <span class="ft-cycle-text">${esc(t.text || t.type || '')}</span>
+                </span>${arrow}`;
+            }).join('');
+        } else {
+            cycleSection.classList.add('hidden');
+        }
+    }
+    
+    // Draw focus graph canvas
+    drawFocusGraph(data);
+    
+    // Unreachable elements table
+    const unreachSection = document.getElementById('ft-unreachable-section');
+    const tbody = document.getElementById('ft-tbody');
+    if (unreachSection && tbody) {
+        if (data.unreachable_details && data.unreachable_details.length > 0) {
+            unreachSection.classList.remove('hidden');
+            tbody.innerHTML = data.unreachable_details.map(el => `
+                <tr>
+                    <td><code>&lt;${esc(el.tag)}&gt;</code></td>
+                    <td class="ft-text-cell">${esc(el.text || '—')}</td>
+                    <td>${esc(el.type || el.tag)}</td>
+                </tr>
+            `).join('');
+        } else {
+            unreachSection.classList.add('hidden');
+        }
+    }
+}
+
+function drawFocusGraph(data) {
+    const canvas = document.getElementById('ft-canvas');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+    
+    const W = rect.width;
+    const H = rect.height;
+    
+    ctx.clearRect(0, 0, W, H);
+    
+    // Background
+    ctx.fillStyle = '#0d1117';
+    ctx.beginPath();
+    ctx.roundRect(0, 0, W, H, 8);
+    ctx.fill();
+    
+    // Gather all unique elements to display
+    const trapSet = new Set(data.trap_cycle || []);
+    const unreachSet = new Set(data.unreachable || []);
+    const reachedSet = new Set((data.focus_path_summary || []).filter(id => id !== 'body' && id !== 'unknown'));
+    
+    // Combine all elements: reached, trapped, unreachable
+    const allElements = [];
+    const seen = new Set();
+    
+    // Add reached elements in order
+    for (const id of (data.focus_path_summary || [])) {
+        if (id === 'body' || id === 'unknown' || id === 'null' || seen.has(id)) continue;
+        seen.add(id);
+        let status = 'reached';
+        if (trapSet.has(id)) status = 'trapped';
+        allElements.push({ id, status });
+    }
+    
+    // Add unreachable elements
+    for (const id of (data.unreachable || [])) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        allElements.push({ id, status: 'unreachable' });
+    }
+    
+    const n = allElements.length;
+    if (n === 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.font = '13px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No focus data available', W/2, H/2);
+        return;
+    }
+    
+    const padding = 40;
+    const usableW = W - padding * 2;
+    const usableH = H - padding * 2 - 10;
+    const cols = Math.ceil(Math.sqrt(n * (usableW / usableH)));
+    const rows = Math.ceil(n / cols);
+    const cellW = usableW / cols;
+    const cellH = usableH / rows;
+    const radius = Math.min(16, cellW / 3, cellH / 3);
+    
+    // Position elements in grid
+    const positions = [];
+    for (let i = 0; i < n; i++) {
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        positions.push({
+            x: padding + col * cellW + cellW / 2,
+            y: padding + row * cellH + cellH / 2,
+        });
+    }
+    
+    // Draw Tab navigation arrows between consecutive reached elements
+    for (let i = 0; i < n - 1; i++) {
+        if (allElements[i].status === 'unreachable') continue;
+        
+        // Find next reached/trapped element
+        let j = i + 1;
+        while (j < n && allElements[j].status === 'unreachable') j++;
+        if (j >= n) break;
+        
+        const from = positions[i];
+        const to = positions[j];
+        
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(to.x, to.y);
+        
+        if (allElements[i].status === 'trapped' || allElements[j].status === 'trapped') {
+            ctx.strokeStyle = 'rgba(244, 67, 54, 0.5)';
+            ctx.lineWidth = 2;
+        } else {
+            ctx.strokeStyle = 'rgba(76, 175, 80, 0.25)';
+            ctx.lineWidth = 1;
+        }
+        ctx.stroke();
+        
+        // Small arrow head
+        const angle = Math.atan2(to.y - from.y, to.x - from.x);
+        const headLen = 6;
+        const midX = (from.x + to.x) / 2;
+        const midY = (from.y + to.y) / 2;
+        ctx.beginPath();
+        ctx.moveTo(midX, midY);
+        ctx.lineTo(midX - headLen * Math.cos(angle - 0.4), midY - headLen * Math.sin(angle - 0.4));
+        ctx.moveTo(midX, midY);
+        ctx.lineTo(midX - headLen * Math.cos(angle + 0.4), midY - headLen * Math.sin(angle + 0.4));
+        ctx.stroke();
+    }
+    
+    // If trap exists, draw the cycle loop arrow
+    if (data.has_trap && data.trap_cycle && data.trap_cycle.length > 1) {
+        const trapIndices = data.trap_cycle.map(id => allElements.findIndex(e => e.id === id)).filter(i => i >= 0);
+        if (trapIndices.length > 1) {
+            const last = positions[trapIndices[trapIndices.length - 1]];
+            const first = positions[trapIndices[0]];
+            ctx.beginPath();
+            ctx.setLineDash([4, 4]);
+            ctx.moveTo(last.x, last.y);
+            // Draw curve back to first
+            const cpx = (last.x + first.x) / 2;
+            const cpy = Math.min(last.y, first.y) - 30;
+            ctx.quadraticCurveTo(cpx, cpy, first.x, first.y);
+            ctx.strokeStyle = 'rgba(244, 67, 54, 0.7)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+    }
+    
+    // Draw element circles
+    allElements.forEach((el, i) => {
+        const pos = positions[i];
+        
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+        
+        if (el.status === 'trapped') {
+            ctx.fillStyle = 'rgba(244, 67, 54, 0.85)';
+            ctx.strokeStyle = '#ff6659';
+            ctx.lineWidth = 2.5;
+        } else if (el.status === 'unreachable') {
+            ctx.fillStyle = 'rgba(120, 120, 120, 0.5)';
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+            ctx.lineWidth = 1;
+        } else {
+            ctx.fillStyle = 'rgba(76, 175, 80, 0.75)';
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctx.lineWidth = 1;
+        }
+        ctx.fill();
+        ctx.stroke();
+        
+        // Element index inside circle
+        ctx.fillStyle = '#fff';
+        ctx.font = `bold ${Math.min(11, radius * 0.8)}px Inter, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText((i + 1).toString(), pos.x, pos.y);
+        
+        // ID label below
+        ctx.fillStyle = el.status === 'unreachable' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.5)';
+        ctx.font = `9px Inter, sans-serif`;
+        const shortId = el.id.replace('al-', '#');
+        ctx.fillText(shortId, pos.x, pos.y + radius + 10);
+        
+        // Trap icon above
+        if (el.status === 'trapped') {
+            ctx.fillStyle = '#ff6659';
+            ctx.font = '10px Inter, sans-serif';
+            ctx.fillText('⚠', pos.x, pos.y - radius - 6);
+        }
+    });
+    
+    // Footer legend
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = '10px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(
+        `Tab path: ${data.focus_path_length} presses • ${reachedSet.size} reached • ${unreachSet.size} unreachable`,
+        padding, H - 8
+    );
 }
 
 // ============ History Functions ============
