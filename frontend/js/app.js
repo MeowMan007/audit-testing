@@ -301,9 +301,25 @@ function showResults(report) {
     renderStats(report);
     renderCategories(report.categories || []);
     renderIssues(report.issues || []);
+    renderScreenshot(report);
     renderReadingOrder(report.reading_order);
     // Visual Model panel removed — skip renderAIInsights
     els.resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderScreenshot(report) {
+    const img = document.getElementById('sc-img');
+    const placeholder = document.getElementById('sc-placeholder');
+    if (!img || !placeholder) return;
+    
+    if (report.screenshot) {
+        img.src = `data:image/png;base64,${report.screenshot}`;
+        img.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+    } else {
+        img.classList.add('hidden');
+        placeholder.classList.remove('hidden');
+    }
 }
 
 function renderScore(report) {

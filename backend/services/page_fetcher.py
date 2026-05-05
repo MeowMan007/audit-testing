@@ -34,6 +34,8 @@ class PageData:
         self.images: list = []
         self.links: list = []
         self.element_rects: Dict[str, Dict[str, float]] = {}
+        self.focus_path: list = []
+        self.focusable_count: int = 0
         self.success: bool = False
         self.error: Optional[str] = None
 

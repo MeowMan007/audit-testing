@@ -307,6 +307,21 @@ body {
 
 .or-error { padding: 16px; background: var(--warning-bg); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: var(--radius); color: #b45309; font-size: 13px;}
 
+/* Screenshot Panel */
+.screenshot-panel {
+    background: var(--bg-card); border-radius: var(--radius-lg);
+    border: 1px solid var(--border); padding: 24px;
+    box-shadow: var(--shadow-sm); margin-bottom: 24px;
+}
+.sc-header { margin-bottom: 16px; }
+.sc-title { font-size: 1.125rem; font-weight: 700; display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
+.sc-container { 
+    width: 100%; border-radius: var(--radius); overflow: hidden; 
+    border: 1px solid var(--border); background: var(--bg-secondary);
+}
+.sc-image { width: 100%; height: auto; display: block; object-fit: contain; }
+.sc-placeholder { padding: 40px 20px; text-align: center; color: var(--text-muted); font-size: 13px; font-style: italic; }
+
 /* Local AI Panel (CNN) */
 .ai-panel {
     background: var(--bg-card); border-radius: var(--radius-lg);

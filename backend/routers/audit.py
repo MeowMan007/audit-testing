@@ -23,7 +23,7 @@ from backend.services.report_generator import ReportGenerator
 from backend.services.database import db_service
 from backend.services.pdf_generator import pdf_generator
 from backend.services.hf_api_service import hf_api_service
-from backend.utils.image_annotator import annotate_screenshot
+from backend.utils.image_annotator import annotate_screenshot, annotate_reading_order
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +116,10 @@ async def run_audit(request: AuditRequest):
             reading_order_result = ro_result.to_dict()
             # Add reading order issues to the main issues list
             issues.extend(ro_result.issues)
+            
+            # Annotate the reading order onto the screenshot
+            if annotated_b64 and ro_result.visual_order_map:
+                annotated_b64 = annotate_reading_order(annotated_b64, ro_result.visual_order_map)
 
         # Step 4: Run AI model (if requested and available)
         dl_insights = []
@@ -294,6 +298,25 @@ DEMO_RESULTS = {
         "total_issues": 4,
         "critical_count": 0,
         "warning_count": 4,
+        "reading_order": {
+            "correlation_score": 0.956,
+            "mismatch_count": 0,
+            "total_elements_analyzed": 24,
+            "severity": "pass",
+            "mismatched_elements": [],
+            "visual_order_map": [
+                {"al_id": "al-0", "tag": "nav", "text": "GOV.UK Navigation", "dom_rank": 1, "visual_rank": 1, "drift": 0, "bbox": {"x": 0, "y": 0, "w": 960, "h": 50}},
+                {"al_id": "al-1", "tag": "h1", "text": "Welcome to GOV.UK", "dom_rank": 2, "visual_rank": 2, "drift": 0, "bbox": {"x": 30, "y": 80, "w": 600, "h": 48}},
+                {"al_id": "al-2", "tag": "p", "text": "The best place to find government services", "dom_rank": 3, "visual_rank": 3, "drift": 0, "bbox": {"x": 30, "y": 140, "w": 500, "h": 24}},
+                {"al_id": "al-3", "tag": "input", "text": "Search GOV.UK", "dom_rank": 4, "visual_rank": 4, "drift": 0, "bbox": {"x": 30, "y": 180, "w": 400, "h": 40}},
+                {"al_id": "al-4", "tag": "a", "text": "Benefits", "dom_rank": 5, "visual_rank": 5, "drift": 0, "bbox": {"x": 30, "y": 260, "w": 280, "h": 36}},
+                {"al_id": "al-5", "tag": "a", "text": "Births, deaths, marriages", "dom_rank": 6, "visual_rank": 6, "drift": 0, "bbox": {"x": 340, "y": 260, "w": 280, "h": 36}},
+                {"al_id": "al-6", "tag": "a", "text": "Business and self-employed", "dom_rank": 7, "visual_rank": 7, "drift": 0, "bbox": {"x": 650, "y": 260, "w": 280, "h": 36}},
+                {"al_id": "al-7", "tag": "a", "text": "Education and learning", "dom_rank": 8, "visual_rank": 8, "drift": 0, "bbox": {"x": 30, "y": 310, "w": 280, "h": 36}},
+                {"al_id": "al-8", "tag": "a", "text": "Employing people", "dom_rank": 9, "visual_rank": 9, "drift": 0, "bbox": {"x": 340, "y": 310, "w": 280, "h": 36}},
+                {"al_id": "al-9", "tag": "footer", "text": "Crown copyright", "dom_rank": 10, "visual_rank": 10, "drift": 0, "bbox": {"x": 0, "y": 700, "w": 960, "h": 60}},
+            ],
+        },
         "issues": [
             {
                 "title": "Generic Link Text: \"more\"",
@@ -344,6 +367,33 @@ DEMO_RESULTS = {
         "description": "Outdated website with numerous accessibility barriers",
         "total_issues": 14,
         "critical_count": 8,
+        "reading_order": {
+            "correlation_score": 0.289,
+            "mismatch_count": 5,
+            "total_elements_analyzed": 18,
+            "severity": "critical",
+            "mismatched_elements": [
+                {"al_id": "al-3", "tag": "nav", "text": "Home | About | Contact", "dom_rank": 4, "visual_rank": 1, "drift": 13, "bbox": {"x": 0, "y": 0, "w": 960, "h": 40}},
+                {"al_id": "al-12", "tag": "p", "text": "Call us: 555-0123", "dom_rank": 13, "visual_rank": 3, "drift": 10, "bbox": {"x": 700, "y": 60, "w": 200, "h": 24}},
+                {"al_id": "al-0", "tag": "img", "text": "", "dom_rank": 1, "visual_rank": 8, "drift": 7, "bbox": {"x": 50, "y": 300, "w": 400, "h": 250}},
+                {"al_id": "al-15", "tag": "a", "text": "Sign up now!", "dom_rank": 16, "visual_rank": 10, "drift": 6, "bbox": {"x": 300, "y": 400, "w": 160, "h": 44}},
+                {"al_id": "al-6", "tag": "h2", "text": "Our Services", "dom_rank": 7, "visual_rank": 12, "drift": 5, "bbox": {"x": 50, "y": 580, "w": 300, "h": 36}},
+            ],
+            "visual_order_map": [
+                {"al_id": "al-3", "tag": "nav", "text": "Home | About | Contact", "dom_rank": 4, "visual_rank": 1, "drift": 13, "bbox": {"x": 0, "y": 0, "w": 960, "h": 40}},
+                {"al_id": "al-1", "tag": "h1", "text": "Welcome to Our Site", "dom_rank": 2, "visual_rank": 2, "drift": 0, "bbox": {"x": 50, "y": 50, "w": 500, "h": 48}},
+                {"al_id": "al-12", "tag": "p", "text": "Call us: 555-0123", "dom_rank": 13, "visual_rank": 3, "drift": 10, "bbox": {"x": 700, "y": 60, "w": 200, "h": 24}},
+                {"al_id": "al-2", "tag": "p", "text": "We offer the best products", "dom_rank": 3, "visual_rank": 4, "drift": 1, "bbox": {"x": 50, "y": 110, "w": 400, "h": 24}},
+                {"al_id": "al-4", "tag": "img", "text": "", "dom_rank": 5, "visual_rank": 5, "drift": 0, "bbox": {"x": 50, "y": 150, "w": 860, "h": 120}},
+                {"al_id": "al-5", "tag": "a", "text": "Learn more", "dom_rank": 6, "visual_rank": 6, "drift": 0, "bbox": {"x": 400, "y": 280, "w": 120, "h": 36}},
+                {"al_id": "al-7", "tag": "p", "text": "Quality service since 1999", "dom_rank": 8, "visual_rank": 7, "drift": 1, "bbox": {"x": 50, "y": 290, "w": 300, "h": 24}},
+                {"al_id": "al-0", "tag": "img", "text": "", "dom_rank": 1, "visual_rank": 8, "drift": 7, "bbox": {"x": 50, "y": 300, "w": 400, "h": 250}},
+                {"al_id": "al-8", "tag": "li", "text": "Web Design", "dom_rank": 9, "visual_rank": 9, "drift": 0, "bbox": {"x": 500, "y": 320, "w": 200, "h": 24}},
+                {"al_id": "al-15", "tag": "a", "text": "Sign up now!", "dom_rank": 16, "visual_rank": 10, "drift": 6, "bbox": {"x": 300, "y": 400, "w": 160, "h": 44}},
+                {"al_id": "al-10", "tag": "p", "text": "Trusted by thousands", "dom_rank": 11, "visual_rank": 11, "drift": 0, "bbox": {"x": 50, "y": 560, "w": 300, "h": 24}},
+                {"al_id": "al-6", "tag": "h2", "text": "Our Services", "dom_rank": 7, "visual_rank": 12, "drift": 5, "bbox": {"x": 50, "y": 580, "w": 300, "h": 36}},
+            ],
+        },
         "warning_count": 6,
         "issues": [
             {
@@ -487,6 +537,30 @@ DEMO_RESULTS = {
         "description": "Modern startup website — looks good but has accessibility gaps",
         "total_issues": 8,
         "critical_count": 3,
+        "reading_order": {
+            "correlation_score": 0.644,
+            "mismatch_count": 3,
+            "total_elements_analyzed": 16,
+            "severity": "warning",
+            "mismatched_elements": [
+                {"al_id": "al-11", "tag": "button", "text": "Get Started Free", "dom_rank": 12, "visual_rank": 4, "drift": 8, "bbox": {"x": 350, "y": 200, "w": 180, "h": 48}},
+                {"al_id": "al-2", "tag": "a", "text": "Pricing", "dom_rank": 3, "visual_rank": 9, "drift": 6, "bbox": {"x": 700, "y": 420, "w": 120, "h": 36}},
+                {"al_id": "al-14", "tag": "input", "text": "Your email", "dom_rank": 15, "visual_rank": 10, "drift": 5, "bbox": {"x": 250, "y": 460, "w": 300, "h": 40}},
+            ],
+            "visual_order_map": [
+                {"al_id": "al-0", "tag": "nav", "text": "StartupCo", "dom_rank": 1, "visual_rank": 1, "drift": 0, "bbox": {"x": 0, "y": 0, "w": 960, "h": 60}},
+                {"al_id": "al-1", "tag": "h1", "text": "Ship faster with AI", "dom_rank": 2, "visual_rank": 2, "drift": 0, "bbox": {"x": 200, "y": 100, "w": 560, "h": 56}},
+                {"al_id": "al-3", "tag": "p", "text": "The modern platform for teams", "dom_rank": 4, "visual_rank": 3, "drift": 1, "bbox": {"x": 220, "y": 170, "w": 520, "h": 24}},
+                {"al_id": "al-11", "tag": "button", "text": "Get Started Free", "dom_rank": 12, "visual_rank": 4, "drift": 8, "bbox": {"x": 350, "y": 200, "w": 180, "h": 48}},
+                {"al_id": "al-4", "tag": "img", "text": "", "dom_rank": 5, "visual_rank": 5, "drift": 0, "bbox": {"x": 100, "y": 280, "w": 760, "h": 120}},
+                {"al_id": "al-5", "tag": "h2", "text": "Features", "dom_rank": 6, "visual_rank": 6, "drift": 0, "bbox": {"x": 400, "y": 340, "w": 160, "h": 36}},
+                {"al_id": "al-6", "tag": "p", "text": "Lightning fast deploys", "dom_rank": 7, "visual_rank": 7, "drift": 0, "bbox": {"x": 50, "y": 390, "w": 280, "h": 24}},
+                {"al_id": "al-7", "tag": "p", "text": "Real-time collaboration", "dom_rank": 8, "visual_rank": 8, "drift": 0, "bbox": {"x": 340, "y": 390, "w": 280, "h": 24}},
+                {"al_id": "al-2", "tag": "a", "text": "Pricing", "dom_rank": 3, "visual_rank": 9, "drift": 6, "bbox": {"x": 700, "y": 420, "w": 120, "h": 36}},
+                {"al_id": "al-14", "tag": "input", "text": "Your email", "dom_rank": 15, "visual_rank": 10, "drift": 5, "bbox": {"x": 250, "y": 460, "w": 300, "h": 40}},
+                {"al_id": "al-9", "tag": "footer", "text": "2026 StartupCo", "dom_rank": 10, "visual_rank": 11, "drift": 1, "bbox": {"x": 0, "y": 600, "w": 960, "h": 60}},
+            ],
+        },
         "warning_count": 5,
         "issues": [
             {
