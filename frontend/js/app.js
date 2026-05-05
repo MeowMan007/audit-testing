@@ -24,6 +24,8 @@ const els = {
     categoriesGrid: document.getElementById('categories-grid'),
     issuesList: document.getElementById('issues-list'),
     issuesToggleBtn: document.getElementById('issues-toggle-btn'),
+    scContainer: document.getElementById('sc-container'),
+    scToggleBtn: document.getElementById('sc-toggle-btn'),
     filterTabs: document.getElementById('filter-tabs'),
     issueSearch: document.getElementById('issue-search'),
     aiInsightsList: document.getElementById('ai-insights-list'),
@@ -40,6 +42,8 @@ const els = {
     toastContainer: document.getElementById('toast-container'),
     
     // OpenRouter DOM refs
+    orContainer: document.getElementById('or-container'),
+    orToggleBtn: document.getElementById('or-toggle-btn'),
     orLoading: document.getElementById('or-loading'),
     orContent: document.getElementById('or-content'),
     orError: document.getElementById('or-error'),
@@ -90,6 +94,24 @@ if (els.issuesToggleBtn) {
         els.issuesToggleBtn.classList.toggle('collapsed', isCollapsed);
         els.issuesToggleBtn.setAttribute('aria-expanded', !isCollapsed);
         els.issuesToggleBtn.title = isCollapsed ? 'Expand Issues' : 'Collapse Issues';
+    });
+}
+
+if (els.scToggleBtn) {
+    els.scToggleBtn.addEventListener('click', () => {
+        const isCollapsed = els.scContainer.classList.toggle('collapsed');
+        els.scToggleBtn.classList.toggle('collapsed', isCollapsed);
+        els.scToggleBtn.setAttribute('aria-expanded', !isCollapsed);
+        els.scToggleBtn.title = isCollapsed ? 'Expand Page Analysis' : 'Collapse Page Analysis';
+    });
+}
+
+if (els.orToggleBtn) {
+    els.orToggleBtn.addEventListener('click', () => {
+        const isCollapsed = els.orContainer.classList.toggle('collapsed');
+        els.orToggleBtn.classList.toggle('collapsed', isCollapsed);
+        els.orToggleBtn.setAttribute('aria-expanded', !isCollapsed);
+        els.orToggleBtn.title = isCollapsed ? 'Expand Design Insights' : 'Collapse Design Insights';
     });
 }
 

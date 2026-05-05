@@ -204,7 +204,7 @@
                     <div class="issues-header">
                         <div class="issues-title-group" style="display: flex; align-items: center; gap: 12px;">
                             <h2 class="issues-title">Found Issues</h2>
-                            <button id="issues-toggle-btn" class="issues-toggle-btn" aria-expanded="true" aria-controls="issues-list" title="Collapse Issues">
+                            <button id="issues-toggle-btn" class="panel-toggle-btn" aria-expanded="true" aria-controls="issues-list" title="Collapse Issues">
                                 <span class="toggle-icon">▼</span>
                             </button>
                         </div>
@@ -230,12 +230,15 @@
                     
                     <!-- Page Screenshot Panel -->
                     <div class="screenshot-panel" id="screenshot-panel">
-                        <div class="sc-header">
+                        <div class="sc-header" style="display: flex; justify-content: space-between; align-items: center;">
                             <h2 class="sc-title">
                                 <span>📸</span> Page Analysis
                             </h2>
+                            <button id="sc-toggle-btn" class="panel-toggle-btn" aria-expanded="true" aria-controls="sc-container" title="Collapse Page Analysis">
+                                <span class="toggle-icon">▼</span>
+                            </button>
                         </div>
-                        <div class="sc-container">
+                        <div class="sc-container panel-content" id="sc-container">
                             <img id="sc-img" src="" alt="Annotated Page Screenshot" class="sc-image hidden">
                             <div id="sc-placeholder" class="sc-placeholder">Screenshot not available</div>
                         </div>
@@ -243,12 +246,19 @@
 
                     <!-- Hugging Face Design Insights Panel -->
                     <div class="openrouter-panel" id="openrouter-panel">
-                        <div class="or-header">
-                            <h2 class="or-title">
-                                <span>✨</span> Design Insights
-                            </h2>
-                            <span class="or-badge">Powered by Hugging Face</span>
+                        <div class="or-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div class="or-title-group" style="display: flex; align-items: center; gap: 8px;">
+                                <h2 class="or-title">
+                                    <span>✨</span> Design Insights
+                                </h2>
+                                <span class="or-badge">Powered by Hugging Face</span>
+                            </div>
+                            <button id="or-toggle-btn" class="panel-toggle-btn" aria-expanded="true" aria-controls="or-container" title="Collapse Design Insights">
+                                <span class="toggle-icon">▼</span>
+                            </button>
                         </div>
+                        
+                        <div class="or-container panel-content" id="or-container">
                         
                         <!-- Loading State -->
                         <div id="or-loading" class="or-loading">
@@ -273,6 +283,7 @@
                         <div id="or-error" class="or-error hidden">
                             AI design insights are currently unavailable.
                         </div>
+                        </div> <!-- end or-container -->
                     </div>
 
 

@@ -225,15 +225,17 @@ body {
 .issues-controls { display: flex; gap: 12px; align-items: center; }
 
 /* Collapse/Expand Toggle */
-.issues-toggle-btn {
+.panel-toggle-btn {
     background: transparent; border: none; cursor: pointer;
     color: var(--text-muted); padding: 4px; border-radius: 4px;
     display: flex; align-items: center; justify-content: center;
     transition: all var(--transition);
 }
-.issues-toggle-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
-.issues-toggle-btn .toggle-icon { transition: transform 0.3s ease; font-size: 14px; }
-.issues-toggle-btn.collapsed .toggle-icon { transform: rotate(-90deg); }
+.panel-toggle-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.panel-toggle-btn .toggle-icon { transition: transform 0.3s ease; font-size: 14px; }
+.panel-toggle-btn.collapsed .toggle-icon { transform: rotate(-90deg); }
+.panel-content { transition: all 0.3s ease; overflow: hidden; }
+.panel-content.collapsed { display: none; }
 .issues-list { transition: all 0.3s ease; overflow: hidden; }
 .issues-list.collapsed { display: none; }
 
